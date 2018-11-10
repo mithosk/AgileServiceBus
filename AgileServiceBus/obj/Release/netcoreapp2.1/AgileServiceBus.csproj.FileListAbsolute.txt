@@ -1,8 +1,0 @@
-C:\Projects\AgileServiceBus\AgileServiceBus\bin\Release\netcoreapp2.1\AgileServiceBus.deps.json
-C:\Projects\AgileServiceBus\AgileServiceBus\bin\Release\netcoreapp2.1\AgileServiceBus.dll
-C:\Projects\AgileServiceBus\AgileServiceBus\bin\Release\netcoreapp2.1\AgileServiceBus.pdb
-C:\Projects\AgileServiceBus\AgileServiceBus\obj\Release\netcoreapp2.1\AgileServiceBus.csproj.CoreCompileInputs.cache
-C:\Projects\AgileServiceBus\AgileServiceBus\obj\Release\netcoreapp2.1\AgileServiceBus.AssemblyInfoInputs.cache
-C:\Projects\AgileServiceBus\AgileServiceBus\obj\Release\netcoreapp2.1\AgileServiceBus.AssemblyInfo.cs
-C:\Projects\AgileServiceBus\AgileServiceBus\obj\Release\netcoreapp2.1\AgileServiceBus.dll
-C:\Projects\AgileServiceBus\AgileServiceBus\obj\Release\netcoreapp2.1\AgileServiceBus.pdb
