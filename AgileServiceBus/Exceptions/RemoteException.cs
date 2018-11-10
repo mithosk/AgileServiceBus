@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace PhotosiMessageLibrary.Exceptions
+namespace AgileSB.Exceptions
 {
     public class RemoteException : Exception
     {

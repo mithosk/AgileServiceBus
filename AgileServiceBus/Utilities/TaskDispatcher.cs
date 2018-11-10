@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace PhotosiMessageLibrary.Utilities
+namespace AgileSB.Utilities
 {
     public class TaskDispatcher
     {

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace PhotosiMessageLibrary.Attributes
+namespace AgileSB.Attributes
 {
     [AttributeUsage(AttributeTargets.Method)]
     public class FakeResponse : Attribute { }

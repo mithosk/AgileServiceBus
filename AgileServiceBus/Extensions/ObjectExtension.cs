@@ -7,7 +7,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
 
-namespace PhotosiMessageLibrary.Extensions
+namespace AgileSB.Extensions
 {
     public static class ObjectExtension
     {

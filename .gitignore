@@ -1,0 +1,6 @@
+.vs/
+AgileServiceBus/bin/
+AgileServiceBus/obj/
+nuget.exe
+AgileServiceBus/lib/
+*.nupkg

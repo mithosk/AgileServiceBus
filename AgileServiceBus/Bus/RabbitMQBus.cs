@@ -1,12 +1,12 @@
 ﻿using Autofac;
 using NCrontab;
-using PhotosiMessageLibrary.Attributes;
-using PhotosiMessageLibrary.DTO;
-using PhotosiMessageLibrary.Exceptions;
-using PhotosiMessageLibrary.Extensions;
-using PhotosiMessageLibrary.Interfaces;
-using PhotosiMessageLibrary.Log;
-using PhotosiMessageLibrary.Utilities;
+using AgileSB.Attributes;
+using AgileSB.DTO;
+using AgileSB.Exceptions;
+using AgileSB.Extensions;
+using AgileSB.Interfaces;
+using AgileSB.Log;
+using AgileSB.Utilities;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System;
@@ -16,7 +16,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace PhotosiMessageLibrary.Bus
+namespace AgileSB.Bus
 {
     public class RabbitMQBus : IBus
     {

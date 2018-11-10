@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace PhotosiMessageLibrary.Extensions
+namespace AgileSB.Extensions
 {
     public static class StringExtension
     {
