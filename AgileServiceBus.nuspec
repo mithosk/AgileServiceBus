@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package>
+  <metadata>
+    <id>AgileServiceBus</id>
+    <version>0.11.11</version>
+    <releaseNotes>Beta version</releaseNotes>
+    <title>AgileServiceBus</title>
+    <description>.NET Core Microservices Framework</description>
+    <tags>Microservices Messaging RabbitMQ</tags>
+    <authors>Luca Nicolini</authors>
+    <owners>Luca Nicolini</owners>
+    <projectUrl>https://github.com/mithosk/AgileServiceBus</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/mithosk/AgileServiceBus/master/Icon.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <dependencies>
+      <dependency id="Autofac" version="[4.8.1]" />
+      <dependency id="ncrontab" version="[3.3.0]" />
+      <dependency id="Newtonsoft.Json" version="[11.0.2]" />
+      <dependency id="RabbitMQ.Client" version="[5.1.0]" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="AgileServiceBus\lib\Release\netcoreapp2.1\AgileServiceBus.dll" target="lib\netcoreapp2.1" />
+  </files>
+</package>
