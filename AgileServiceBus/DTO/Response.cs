@@ -1,4 +1,4 @@
-﻿namespace PhotosiMessageLibrary.DTO
+﻿namespace AgileSB.DTO
 {
     public class Response<T>
     {

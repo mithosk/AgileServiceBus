@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace PhotosiMessageLibrary.Log
+namespace AgileSB.Log
 {
     public class OnConsumed
     {

@@ -1,6 +1,6 @@
 ﻿using System.Threading.Tasks;
 
-namespace PhotosiMessageLibrary.Interfaces
+namespace AgileSB.Interfaces
 {
     public interface IRequestSubscriber<TRequest> where TRequest : class
     {

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace PhotosiMessageLibrary.Attributes
+namespace AgileSB.Attributes
 {
     [AttributeUsage(AttributeTargets.Class)]
     public class QueueConfig : Attribute

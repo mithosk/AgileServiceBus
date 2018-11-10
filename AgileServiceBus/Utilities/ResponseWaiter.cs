@@ -1,6 +1,6 @@
 ﻿using System.Collections.Concurrent;
 
-namespace PhotosiMessageLibrary.Utilities
+namespace AgileSB.Utilities
 {
     public class ResponseWaiter
     {

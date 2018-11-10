@@ -1,7 +1,7 @@
 ﻿using Autofac;
 using System;
 
-namespace PhotosiMessageLibrary.Interfaces
+namespace AgileSB.Interfaces
 {
     public interface IRegistrationBus : IDisposable
     {

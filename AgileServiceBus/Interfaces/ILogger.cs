@@ -1,7 +1,7 @@
-﻿using PhotosiMessageLibrary.Log;
+﻿using AgileSB.Log;
 using System.Threading.Tasks;
 
-namespace PhotosiMessageLibrary.Interfaces
+namespace AgileSB.Interfaces
 {
 	public interface ILogger
 	{
