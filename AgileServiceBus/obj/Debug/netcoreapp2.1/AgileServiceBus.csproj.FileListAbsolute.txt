@@ -6,4 +6,3 @@ C:\Projects\AgileServiceBus\AgileServiceBus\obj\Debug\netcoreapp2.1\AgileService
 C:\Projects\AgileServiceBus\AgileServiceBus\obj\Debug\netcoreapp2.1\AgileServiceBus.AssemblyInfo.cs
 C:\Projects\AgileServiceBus\AgileServiceBus\obj\Debug\netcoreapp2.1\AgileServiceBus.dll
 C:\Projects\AgileServiceBus\AgileServiceBus\obj\Debug\netcoreapp2.1\AgileServiceBus.pdb
-C:\Projects\AgileServiceBus\AgileServiceBus\obj\Debug\netcoreapp2.1\AgileServiceBus.csprojAssemblyReference.cache
