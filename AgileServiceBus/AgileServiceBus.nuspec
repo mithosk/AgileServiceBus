@@ -20,6 +20,6 @@
     </dependencies>
   </metadata>
   <files>
-    <file src="AgileServiceBus\lib\Release\netcoreapp2.1\AgileServiceBus.dll" target="lib\netcoreapp2.1" />
+    <file src="lib\Release\netcoreapp2.1\AgileServiceBus.dll" target="lib\netcoreapp2.1" />
   </files>
 </package>

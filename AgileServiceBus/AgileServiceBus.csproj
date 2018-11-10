@@ -13,6 +13,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="lib\**" />
+    <EmbeddedResource Remove="lib\**" />
+    <None Remove="lib\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="AgileServiceBus.nuspec" />
+    <None Remove="nuget.exe" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Autofac" Version="4.8.1" />
     <PackageReference Include="ncrontab" Version="3.3.0" />
     <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
