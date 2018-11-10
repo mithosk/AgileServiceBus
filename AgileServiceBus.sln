@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2050
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgileServiceBus", "AgileServiceBus\AgileServiceBus.csproj", "{6E826767-06AB-4999-A537-17359A0BADAA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6E826767-06AB-4999-A537-17359A0BADAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6E826767-06AB-4999-A537-17359A0BADAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E826767-06AB-4999-A537-17359A0BADAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6E826767-06AB-4999-A537-17359A0BADAA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {373D34EC-F7B1-4661-A028-59DFF7DAF4FE}
+	EndGlobalSection
+EndGlobal
