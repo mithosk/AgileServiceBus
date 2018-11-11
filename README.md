@@ -26,8 +26,8 @@ public class MyEventSubscriber : IPublishSubscriber<MyEvent>
 }
 ```
 ```
-IRegistrationBus bus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
-bus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
+IRegistrationBus rbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
+rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
 ```
 
 
@@ -59,20 +59,38 @@ public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 }
 ```
 ```
-bus.Subscribe<MyRequestSubscriber, MyRequest>(false);
-bus.RegistrationCompleted();
+rbus.Subscribe<MyRequestSubscriber, MyRequest>(false);
+rbus.RegistrationCompleted();
 ```
 
 
 
 ### ... how to make a gateway request ...
 ```
-IGatewayBus bus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
+IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
 ```
 ```
-MyResponse response = await bus.RequestAsync<MyResponse>(new MyRequest() 
+MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest() 
 { 
     Lion = 5, 
     Crocodile = DateTimeOffset.Now 
+});
+```
+
+
+
+### ... how to create a message scheduler ...
+```
+ISchedulerBus sbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
+```
+```
+sbus.Schedule("* * * * *", () =>
+{
+
+    return (event);
+},
+async (Exception e) =>
+{
+
 });
 ```
