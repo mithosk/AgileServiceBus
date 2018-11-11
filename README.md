@@ -32,7 +32,7 @@ rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
 
 
 
-### ... how to create a MICROSERVICE RPC responder ...
+### ... how to create a MICROSERVICE rpc responder ...
 
 ```
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
