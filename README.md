@@ -1,4 +1,4 @@
-### ... how to create a microservice message listener ...
+### ... how to create a MICROSERVICE message listener ...
 
 ```
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
@@ -32,7 +32,7 @@ rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
 
 
 
-### ... how to create a microservice RPC responder ...
+### ... how to create a MICROSERVICE RPC responder ...
 
 ```
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
@@ -65,7 +65,8 @@ rbus.RegistrationCompleted();
 
 
 
-### ... how to make a gateway request ...
+### ... how to make a GATEWAY request ...
+
 ```
 IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
 ```
@@ -79,7 +80,8 @@ MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest()
 
 
 
-### ... how to create a message scheduler ...
+### ... how to create a message SCHEDULER ...
+
 ```
 ISchedulerBus sbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
 ```
