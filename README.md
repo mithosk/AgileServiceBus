@@ -9,7 +9,7 @@ public class MyEvent
     public string Cat { get; set; }
 
     [Required]
-    public DateTimeOffset Dog { get; set; }
+    public DateTimeOffset? Dog { get; set; }
 
     public Guid? Tiger { get; set; }
 }
@@ -42,7 +42,7 @@ public class MyRequest
     public int? Lion { get; set; }
 
     [Required]
-    public DateTimeOffset Crocodile { get; set; }
+    public DateTimeOffset? Crocodile { get; set; }
 
     public Guid? Horse { get; set; }
 }
@@ -61,4 +61,14 @@ public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 ```
 bus.Subscribe<MyRequestSubscriber, MyRequest>(false);
 bus.RegistrationCompleted();
+```
+
+
+
+### ... how to make a gateway request ...
+```
+IGatewayBus bus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
+```
+```
+MyResponse response = await bus.RequestAsync<MyResponse>(new MyRequest() { Lion = 5, Crocodile = DateTimeOffset.Now })
 ```
