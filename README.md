@@ -26,7 +26,7 @@ public class MyEventSubscriber : IPublishSubscriber<MyEvent>
 }
 ```
 ```
-IRegistrationBus rbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
+IRegistrationBus rbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=aaa");
 rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
 ```
 
@@ -68,7 +68,7 @@ rbus.RegistrationCompleted();
 ### ... how to make a GATEWAY rpc request ...
 
 ```
-IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
+IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=bbb");
 ```
 ```
 MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest() 
@@ -83,7 +83,7 @@ MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest()
 ### ... how to create a message SCHEDULER ...
 
 ```
-ISchedulerBus sbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
+ISchedulerBus sbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=ccc");
 ```
 ```
 sbus.Schedule("* * * * *", () =>
