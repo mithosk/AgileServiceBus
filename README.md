@@ -65,7 +65,7 @@ rbus.RegistrationCompleted();
 
 
 
-### ... how to make a GATEWAY request ...
+### ... how to make a GATEWAY rpc request ...
 
 ```
 IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
