@@ -1,6 +1,6 @@
-### ... how to create a MICROSERVICE message listener ...(A)
+### ... how to create a MICROSERVICE message listener ...
 
-```(B)
+```
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyEvent
 {
@@ -14,7 +14,7 @@ public class MyEvent
     public Guid? Tiger { get; set; }
 }
 ```
-```(C)
+```
 public class MyEventSubscriber : IPublishSubscriber<MyEvent>
 {
     public IMicroserviceBus Bus { get; set; }
@@ -25,16 +25,16 @@ public class MyEventSubscriber : IPublishSubscriber<MyEvent>
     }
 }
 ```
-```(D)
+```
 IRegistrationBus rbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=aaa");
 rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
 ```
 
 
 
-### ... how to create a MICROSERVICE rpc responder ...(E)
+### ... how to create a MICROSERVICE rpc responder ...
 
-```(F)
+```
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyRequest
 {
@@ -47,7 +47,7 @@ public class MyRequest
     public Guid? Horse { get; set; }
 }
 ```
-```(G)
+```
 public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 {
     public IMicroserviceBus Bus { get; set; }
@@ -58,19 +58,19 @@ public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
     }
 }
 ```
-```(H)
+```
 rbus.Subscribe<MyRequestSubscriber, MyRequest>(false);
 rbus.RegistrationCompleted();
 ```
 
 
 
-### ... how to make a GATEWAY rpc request ...(I)
+### ... how to make a GATEWAY rpc request ...
 
-```(L)
+```
 IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=bbb");
 ```
-```(M)
+```
 MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest() 
 { 
     Lion = 5, 
@@ -80,12 +80,12 @@ MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest()
 
 
 
-### ... how to create a message SCHEDULER ...(N)
+### ... how to create a message SCHEDULER ...
 
-```(O)
+```
 ISchedulerBus sbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=ccc");
 ```
-```(P)
+```
 sbus.Schedule("* * * * *", () =>
 {
 
