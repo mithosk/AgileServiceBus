@@ -70,5 +70,9 @@ bus.RegistrationCompleted();
 IGatewayBus bus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=www");
 ```
 ```
-MyResponse response = await bus.RequestAsync<MyResponse>(new MyRequest() { Lion = 5, Crocodile = DateTimeOffset.Now })
+MyResponse response = await bus.RequestAsync<MyResponse>(new MyRequest() 
+{ 
+    Lion = 5, 
+    Crocodile = DateTimeOffset.Now 
+});
 ```
