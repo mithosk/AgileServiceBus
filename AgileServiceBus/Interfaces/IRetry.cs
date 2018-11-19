@@ -5,7 +5,7 @@ namespace AgileServiceBus.Interfaces
 {
     public interface IRetry : IExcludeForRetry, IIncludeForRetry
     {
-        bool IsForRetry<TException>(TException exception) where TException : Exception;
+        bool IsForRetry(Exception exception);
         Task ExecuteAsync(Func<Task> toRetry, Func<Exception, ushort, ushort, Task> error);
     }
 }
