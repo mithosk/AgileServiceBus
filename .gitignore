@@ -4,3 +4,5 @@ AgileServiceBus/obj/
 nuget.exe
 AgileServiceBus/lib/
 *.nupkg
+AgileServiceBus.Test/bin/
+AgileServiceBus.Test/obj/
