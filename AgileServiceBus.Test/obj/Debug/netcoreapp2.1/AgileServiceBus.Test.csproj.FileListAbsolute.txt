@@ -1,0 +1,14 @@
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\bin\Debug\netcoreapp2.1\xunit.runner.visualstudio.dotnetcore.testadapter.dll
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\bin\Debug\netcoreapp2.1\xunit.runner.reporters.netcoreapp10.dll
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\bin\Debug\netcoreapp2.1\xunit.runner.utility.netcoreapp10.dll
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\bin\Debug\netcoreapp2.1\AgileServiceBus.Test.deps.json
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\bin\Debug\netcoreapp2.1\AgileServiceBus.Test.runtimeconfig.json
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\bin\Debug\netcoreapp2.1\AgileServiceBus.Test.runtimeconfig.dev.json
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\bin\Debug\netcoreapp2.1\AgileServiceBus.Test.dll
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\bin\Debug\netcoreapp2.1\AgileServiceBus.Test.pdb
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\obj\Debug\netcoreapp2.1\AgileServiceBus.Test.csprojAssemblyReference.cache
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\obj\Debug\netcoreapp2.1\AgileServiceBus.Test.csproj.CoreCompileInputs.cache
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\obj\Debug\netcoreapp2.1\AgileServiceBus.Test.AssemblyInfoInputs.cache
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\obj\Debug\netcoreapp2.1\AgileServiceBus.Test.AssemblyInfo.cs
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\obj\Debug\netcoreapp2.1\AgileServiceBus.Test.dll
+C:\Projects\AgileServiceBus\AgileServiceBus.Test\obj\Debug\netcoreapp2.1\AgileServiceBus.Test.pdb
