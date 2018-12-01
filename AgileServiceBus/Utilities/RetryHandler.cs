@@ -74,7 +74,7 @@ namespace AgileServiceBus.Utilities
                     await error(exception, i, _retryLimit);
 
                     if (!IsForRetry(exception))
-                        throw;
+                        break;
                 }
 
                 await Task.Delay(_random.Next(_minDelay, _maxDelay));
