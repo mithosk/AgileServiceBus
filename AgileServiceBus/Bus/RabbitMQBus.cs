@@ -1,17 +1,18 @@
-﻿using Autofac;
-using NCrontab;
-using AgileSB.Attributes;
+﻿using AgileSB.Attributes;
 using AgileSB.DTO;
 using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
 using AgileSB.Log;
 using AgileSB.Utilities;
+using AgileServiceBus.Interfaces;
+using AgileServiceBus.Utilities;
+using Autofac;
+using NCrontab;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
@@ -24,8 +25,9 @@ namespace AgileSB.Bus
         private const ushort RESPONSE_PREFETCHCOUNT = 50;
         private const int REQUEST_TIMEOUT = 7000;
         private const int DEAD_LETTER_QUEUE_RECOVERY_LIMIT = 1000;
-        private const ushort RETRY_LIMIT = 5;
+        private const ushort MIN_RETRY_DELAY = 1;
         private const ushort MAX_RETRY_DELAY = 250;
+        private const ushort RETRY_LIMIT = 5;
         private const ushort NUMBER_OF_THREADS = 5;
 
         private IConnection _connection;
@@ -178,10 +180,13 @@ namespace AgileSB.Bus
             }));
         }
 
-        public void Subscribe<TSubscriber, TRequest>(bool retry) where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
+        public IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+
+            //retry handler
+            IRetry retryHandler = new RetryHandler(MIN_RETRY_DELAY, MAX_RETRY_DELAY, RETRY_LIMIT, true);
 
             //creates queue and exchange
             string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
@@ -205,39 +210,24 @@ namespace AgileSB.Bus
 
                     //response action
                     Response<object> response = new Response<object>();
-                    ushort retryLimit = (retry == true ? RETRY_LIMIT : ((ushort)0));
-                    Random rnd = new Random();
-                    for (ushort i = 0; i <= retryLimit; i++)
-                    {
-                        try
-                        {
-                            TRequest request = message.Deserialize<TRequest>();
-                            request.Validate();
-                            using (ILifetimeScope container = _container.BeginLifetimeScope())
-                            {
-                                TSubscriber subscriber = container.Resolve<TSubscriber>();
-                                subscriber.Bus = this;
-                                response.Data = await subscriber.ResponseAsync(request);
-                            }
 
-                            break;
-                        }
-                        catch (ValidationException e)
+                    await retryHandler.ExecuteAsync(async () =>
+                    {
+                        TRequest request = message.Deserialize<TRequest>();
+                        request.Validate();
+                        using (ILifetimeScope container = _container.BeginLifetimeScope())
                         {
-                            await LogOnResponseError(queue, args, e, 0, 0);
-                            response.ExceptionCode = "Validation";
-                            response.ExceptionMessage = e.Message;
-                            break;
+                            TSubscriber subscriber = container.Resolve<TSubscriber>();
+                            subscriber.Bus = this;
+                            response.Data = await subscriber.ResponseAsync(request);
                         }
-                        catch (Exception e)
-                        {
-                            await LogOnResponseError(queue, args, e, i, retryLimit);
-                            response.ExceptionCode = e.GetType().Name.Replace("Exception", "");
-                            response.ExceptionMessage = e.Message;
-                            if (i < retryLimit)
-                                await Task.Delay(rnd.Next(0, MAX_RETRY_DELAY));
-                        }
-                    }
+                    },
+                    async (exception, retryIndex, retryLimit) =>
+                    {
+                        await LogOnResponseError(queue, args, exception, retryIndex, retryLimit);
+                        response.ExceptionCode = exception.GetType().Name.Replace("Exception", "");
+                        response.ExceptionMessage = exception.Message;
+                    });
 
                     //response message
                     if (typeof(TSubscriber).GetMethod("ResponseAsync").GetCustomAttribute<FakeResponse>() == null)
@@ -257,12 +247,17 @@ namespace AgileSB.Bus
             };
 
             _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(_requestSubscriberChannel, queue, consumer));
+
+            return retryHandler;
         }
 
-        public void Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, ushort? retryLimit, TimeSpan? retryDelay) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
+        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+
+            //retry handler
+            IRetry retryHandler = new RetryHandler(0, 0, 0, false);
 
             //creates queue and exchange
             string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
@@ -309,16 +304,12 @@ namespace AgileSB.Bus
 
                         await LogOnConsumed(queue, args);
                     }
-                    catch (ValidationException e)
+                    catch (Exception exception)
                     {
-                        await LogOnConsumeError(queue, args, e, 0);
-                    }
-                    catch (Exception e)
-                    {
-                        await LogOnConsumeError(queue, args, e, retryLimit);
+                        await LogOnConsumeError(queue, args, exception, retryLimit);
 
-                        uint retryIndex = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"])).Deserialize<uint>();
-                        if (retryDelay != null && (retryLimit == null || retryIndex < retryLimit))
+                        ushort retryIndex = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"])).Deserialize<ushort>();
+                        if (retryHandler.IsForRetry(exception) && !String.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
                         {
                             IBasicProperties properties = _deadLetterQueueChannel.CreateBasicProperties();
                             properties.AppId = _appId;
@@ -343,7 +334,7 @@ namespace AgileSB.Bus
             {
                 while (true)
                 {
-                    await Task.Delay(retryDelay.Value);
+                    await CronDelay(retryCron);
 
                     List<BasicGetResult> bgrs = new List<BasicGetResult>();
                     for (int i = 0; i < DEAD_LETTER_QUEUE_RECOVERY_LIMIT; i++)
@@ -362,6 +353,8 @@ namespace AgileSB.Bus
                     }
                 }
             });
+
+            return retryHandler;
         }
 
         public void Schedule<TMessage>(string cron, Func<TMessage> createMessage, Func<Exception, Task> onError) where TMessage : class
@@ -372,10 +365,7 @@ namespace AgileSB.Bus
                 {
                     try
                     {
-                        CrontabSchedule schedule = CrontabSchedule.Parse(cron);
-                        DateTime nextDate = schedule.GetNextOccurrence(DateTime.UtcNow);
-                        TimeSpan delay = (nextDate - DateTime.UtcNow);
-                        await Task.Delay(delay);
+                        await CronDelay(cron);
 
                         await PublishAsync(createMessage());
                     }
@@ -488,6 +478,15 @@ namespace AgileSB.Bus
 
                 await Logger.LogAsync(data);
             }
+        }
+
+        private async Task CronDelay(string cron)
+        {
+            CrontabSchedule schedule = CrontabSchedule.Parse(cron);
+            DateTime nextDate = schedule.GetNextOccurrence(DateTime.UtcNow);
+            TimeSpan delay = (nextDate - DateTime.UtcNow);
+
+            await Task.Delay(delay);
         }
 
         public void Dispose()
