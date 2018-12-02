@@ -1,6 +1,6 @@
 ### ... how to create a MICROSERVICE message listener ...
 
-```
+```csharp
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyEvent
 {
