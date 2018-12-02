@@ -14,7 +14,7 @@ public class MyEvent
     public Guid? Tiger { get; set; }
 }
 ```
-```
+```csharp
 public class MyEventSubscriber : IPublishSubscriber<MyEvent>
 {
     public IMicroserviceBus Bus { get; set; }
@@ -25,7 +25,7 @@ public class MyEventSubscriber : IPublishSubscriber<MyEvent>
     }
 }
 ```
-```
+```csharp
 IRegistrationBus rbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=aaa");
 rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
 ```
@@ -34,7 +34,7 @@ rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
 
 ### ... how to create a MICROSERVICE rpc responder ...
 
-```
+```csharp
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyRequest
 {
@@ -47,7 +47,7 @@ public class MyRequest
     public Guid? Horse { get; set; }
 }
 ```
-```
+```csharp
 public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 {
     public IMicroserviceBus Bus { get; set; }
@@ -58,7 +58,7 @@ public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
     }
 }
 ```
-```
+```csharp
 rbus.Subscribe<MyRequestSubscriber, MyRequest>();
 rbus.RegistrationCompleted();
 ```
@@ -67,10 +67,10 @@ rbus.RegistrationCompleted();
 
 ### ... how to make a GATEWAY rpc request ...
 
-```
+```csharp
 IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=bbb");
 ```
-```
+```csharp
 MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest() 
 { 
     Lion = 5, 
@@ -82,10 +82,10 @@ MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest()
 
 ### ... how to create a message SCHEDULER ...
 
-```
+```csharp
 ISchedulerBus sbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=ccc");
 ```
-```
+```csharp
 sbus.Schedule("* * * * *", () =>
 {
 
