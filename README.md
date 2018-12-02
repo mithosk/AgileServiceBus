@@ -59,7 +59,7 @@ public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 }
 ```
 ```
-rbus.Subscribe<MyRequestSubscriber, MyRequest>(false);
+rbus.Subscribe<MyRequestSubscriber, MyRequest>();
 rbus.RegistrationCompleted();
 ```
 
