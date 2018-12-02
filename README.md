@@ -89,7 +89,7 @@ ISchedulerBus sbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Passwor
 sbus.Schedule("* * * * *", () =>
 {
 
-    return (message);
+    return message;
 },
 async (Exception e) =>
 {
