@@ -78,7 +78,7 @@ namespace AgileSB.Bus
             _responseWaiter = new ResponseWaiter(REQUEST_TIMEOUT);
 
             //response listener
-            _responseQueue = (_appId + "." + Guid.NewGuid().ToString());
+            _responseQueue = (_appId.ToLower() + ".response." + Guid.NewGuid().ToString("N"));
             _responseChannel.QueueDeclare(_responseQueue, false, true, true, null);
             EventingBasicConsumer consumer = new EventingBasicConsumer(_responseChannel);
             consumer.Received += (obj, args) =>
@@ -161,14 +161,11 @@ namespace AgileSB.Bus
                 //validation
                 message.Validate();
 
-                //creates queue and exchange
+                //message direction
                 string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
                 string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-                string exchange = (directory + ".Message." + typeof(TMessage).Name);
-                string queue = (directory + "." + subdirectory + ".Message." + typeof(TMessage).Name + (topic == null ? "" : "." + topic));
-                _senderChannel.QueueDeclare(queue, true, false, false, null);
-                _senderChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
-                _senderChannel.QueueBind(queue, exchange, (topic ?? ""));
+                string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
+                string routingKey = (directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
 
                 //message publishing
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
@@ -178,7 +175,7 @@ namespace AgileSB.Bus
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Headers.Add("RetryIndex", 0.Serialize());
                 properties.Persistent = true;
-                _senderChannel.BasicPublish(exchange, (topic ?? ""), properties, Encoding.UTF8.GetBytes(message.Serialize()));
+                _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(message.Serialize()));
             }));
         }
 
@@ -265,14 +262,15 @@ namespace AgileSB.Bus
             //creates queue and exchange
             string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = (directory + ".Message." + typeof(TMessage).Name);
-            string queue = (directory + "." + subdirectory + ".Message." + typeof(TMessage).Name + (topic == null ? "" : ("." + topic)));
+            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = (directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : "*"));
+            string queue = (_appId.ToLower() + ".event." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : ""));
             _requestSubscriberChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
             _requestSubscriberChannel.QueueDeclare(queue, true, false, false, null);
-            _requestSubscriberChannel.QueueBind(queue, exchange, (topic ?? "#"));
+            _requestSubscriberChannel.QueueBind(queue, exchange, routingKey);
 
             //creates dead letter queue
-            string deadLetterQueue = (queue + ".DLQ");
+            string deadLetterQueue = (queue + ".dlq");
             _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
 
             //channel
