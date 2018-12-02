@@ -106,9 +106,11 @@ namespace AgileSB.Bus
                 //validation
                 request.Validate();
 
-                //exchange
+                //message direction
                 string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
-                string exchange = (directory + ".Request." + request.GetType().Name);
+                string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+                string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+                string routingKey = (directory.ToLower() + "-" + subdirectory.ToLower() + "-" + request.GetType().Name.ToLower());
 
                 //correlation
                 string correlationId = Guid.NewGuid().ToString();
@@ -124,7 +126,7 @@ namespace AgileSB.Bus
                 properties.Headers = new Dictionary<string, object>();
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Persistent = false;
-                _senderChannel.BasicPublish(exchange, "", properties, Encoding.UTF8.GetBytes(request.Serialize()));
+                _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
 
                 //waiting response
                 Response<TResponse> response = null;
@@ -191,11 +193,12 @@ namespace AgileSB.Bus
             //creates queue and exchange
             string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = (directory + ".Request." + typeof(TRequest).Name);
-            string queue = (directory + "." + subdirectory + ".Request." + typeof(TRequest).Name);
-            _requestSubscriberChannel.ExchangeDeclare(exchange, ExchangeType.Fanout, true, false);
+            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = (directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower());
+            string queue = (_appId.ToLower() + ".request." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TRequest).Name.ToLower());
+            _requestSubscriberChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
             _requestSubscriberChannel.QueueDeclare(queue, true, false, false, null);
-            _requestSubscriberChannel.QueueBind(queue, exchange, "");
+            _requestSubscriberChannel.QueueBind(queue, exchange, routingKey);
 
             //request listener
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestSubscriberChannel);
