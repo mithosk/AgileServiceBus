@@ -59,6 +59,10 @@ namespace AgileServiceBus.Test.Unit
                 errorCount++;
 
                 await Task.Delay(10);
+
+                Assert.NotNull(exception);
+                Assert.Equal((ushort)retryCount, retryIndex);
+                Assert.Equal(7, retryLimit);
             });
 
             Assert.Equal(7, retryCount);
@@ -89,6 +93,10 @@ namespace AgileServiceBus.Test.Unit
                 errorCount++;
 
                 await Task.Delay(10);
+
+                Assert.NotNull(exception);
+                Assert.Equal(0, retryIndex);
+                Assert.Equal(0, retryLimit);
             });
 
             Assert.Equal(0, retryCount);
