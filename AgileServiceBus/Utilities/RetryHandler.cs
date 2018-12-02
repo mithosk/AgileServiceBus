@@ -71,9 +71,11 @@ namespace AgileServiceBus.Utilities
                 }
                 catch (Exception exception)
                 {
-                    await error(exception, i, _retryLimit);
+                    bool isForRetry = IsForRetry(exception);
 
-                    if (!IsForRetry(exception))
+                    await error(exception, i, (isForRetry ? _retryLimit : i));
+
+                    if (!isForRetry)
                         break;
                 }
 
