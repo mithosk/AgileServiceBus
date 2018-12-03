@@ -29,15 +29,16 @@ namespace AgileSB.Bus
         private const ushort MAX_RETRY_DELAY = 250;
         private const ushort RETRY_LIMIT = 5;
         private const ushort NUMBER_OF_THREADS = 5;
+        private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
 
         private IConnection _connection;
         private IModel _senderChannel;
-        private IModel _requestSubscriberChannel;
-        private IModel _responseChannel;
-        private Dictionary<int, IModel> _publishSubscriberChannels;
+        private IModel _requestListenerChannel;
+        private IModel _responseListenerChannel;
+        private Dictionary<int, IModel> _eventListenerChannels;
         private IModel _deadLetterQueueChannel;
         private string _appId;
-        private string _responseQueue;
+        private string _responseRoutingKey;
         private ResponseWaiter _responseWaiter;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
@@ -61,11 +62,11 @@ namespace AgileSB.Bus
 
             //creates channels
             _senderChannel = _connection.CreateModel();
-            _requestSubscriberChannel = _connection.CreateModel();
-            _requestSubscriberChannel.BasicQos(0, REQUEST_PREFETCHCOUNT, false);
-            _responseChannel = _connection.CreateModel();
-            _responseChannel.BasicQos(0, RESPONSE_PREFETCHCOUNT, false);
-            _publishSubscriberChannels = new Dictionary<int, IModel>();
+            _requestListenerChannel = _connection.CreateModel();
+            _requestListenerChannel.BasicQos(0, REQUEST_PREFETCHCOUNT, false);
+            _responseListenerChannel = _connection.CreateModel();
+            _responseListenerChannel.BasicQos(0, RESPONSE_PREFETCHCOUNT, false);
+            _eventListenerChannels = new Dictionary<int, IModel>();
             _deadLetterQueueChannel = _connection.CreateModel();
 
             //application identifier
@@ -78,16 +79,21 @@ namespace AgileSB.Bus
             _responseWaiter = new ResponseWaiter(REQUEST_TIMEOUT);
 
             //response listener
-            _responseQueue = (_appId.ToLower() + ".response." + Guid.NewGuid().ToString("N"));
-            _responseChannel.QueueDeclare(_responseQueue, false, true, true, null);
-            EventingBasicConsumer consumer = new EventingBasicConsumer(_responseChannel);
+            Guid responseGuid = Guid.NewGuid();
+            string responseQueue = (_appId.ToLower() + "-response-" + responseGuid.ToString("N"));
+            string responseExchange = (_appId.ToLower() + "_response");
+            _responseRoutingKey = responseGuid.ToString("N");
+            _responseListenerChannel.QueueDeclare(responseQueue, false, true, true, null);
+            _responseListenerChannel.ExchangeDeclare(responseExchange, ExchangeType.Direct, true, false);
+            _responseListenerChannel.QueueBind(responseQueue, responseExchange, _responseRoutingKey);
+            EventingBasicConsumer consumer = new EventingBasicConsumer(_responseListenerChannel);
             consumer.Received += (obj, args) =>
             {
                 _responseWaiter.Resolve(args.BasicProperties.CorrelationId, Encoding.UTF8.GetString(args.Body));
-                _responseChannel.BasicAck(args.DeliveryTag, false);
+                _responseListenerChannel.BasicAck(args.DeliveryTag, false);
             };
 
-            _responseChannel.BasicConsume(_responseQueue, false, consumer);
+            _responseListenerChannel.BasicConsume(responseQueue, false, consumer);
 
             //builded container
             _container = null;
@@ -110,7 +116,7 @@ namespace AgileSB.Bus
                 string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
                 string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
                 string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
-                string routingKey = (directory.ToLower() + "-" + subdirectory.ToLower() + "-" + request.GetType().Name.ToLower());
+                string routingKey = request.GetType().Name.ToLower();
 
                 //correlation
                 string correlationId = Guid.NewGuid().ToString();
@@ -121,9 +127,10 @@ namespace AgileSB.Bus
                 //request message
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
                 properties.AppId = _appId;
-                properties.ReplyTo = _responseQueue;
                 properties.CorrelationId = correlationId;
                 properties.Headers = new Dictionary<string, object>();
+                properties.Headers.Add("ReplyToExchange", (_appId.ToLower() + "_response"));
+                properties.Headers.Add("ReplyToRoutingKey", _responseRoutingKey);
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Persistent = false;
                 _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
@@ -165,7 +172,7 @@ namespace AgileSB.Bus
                 string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
                 string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
                 string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-                string routingKey = (directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
+                string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
 
                 //message publishing
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
@@ -191,14 +198,14 @@ namespace AgileSB.Bus
             string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
             string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower());
-            string queue = (_appId.ToLower() + ".request." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TRequest).Name.ToLower());
-            _requestSubscriberChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
-            _requestSubscriberChannel.QueueDeclare(queue, true, false, false, null);
-            _requestSubscriberChannel.QueueBind(queue, exchange, routingKey);
+            string routingKey = typeof(TRequest).Name.ToLower();
+            string queue = (_appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower());
+            _requestListenerChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
+            _requestListenerChannel.QueueDeclare(queue, true, false, false, null);
+            _requestListenerChannel.QueueBind(queue, exchange, routingKey);
 
             //request listener
-            EventingBasicConsumer consumer = new EventingBasicConsumer(_requestSubscriberChannel);
+            EventingBasicConsumer consumer = new EventingBasicConsumer(_requestListenerChannel);
             consumer.Received += (obj, args) =>
             {
                 _dispatcher.Dispatch(async () =>
@@ -236,17 +243,17 @@ namespace AgileSB.Bus
                         IBasicProperties properties = _senderChannel.CreateBasicProperties();
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
-                        _senderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(message));
+                        _senderChannel.BasicPublish(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToExchange"]), Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToRoutingKey"]), properties, Encoding.UTF8.GetBytes(message));
 
                         await LogOnResponse(queue, message, args);
                     }
 
                     //acknowledgment
-                    _requestSubscriberChannel.BasicAck(args.DeliveryTag, false);
+                    _requestListenerChannel.BasicAck(args.DeliveryTag, false);
                 });
             };
 
-            _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(_requestSubscriberChannel, queue, consumer));
+            _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(_requestListenerChannel, queue, consumer));
 
             return retryHandler;
         }
@@ -256,33 +263,38 @@ namespace AgileSB.Bus
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
 
-            //retry handler
-            IRetry retryHandler = new RetryHandler(0, 0, 0, false);
-
-            //creates queue and exchange
-            string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : "*"));
-            string queue = (_appId.ToLower() + ".event." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : ""));
-            _requestSubscriberChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
-            _requestSubscriberChannel.QueueDeclare(queue, true, false, false, null);
-            _requestSubscriberChannel.QueueBind(queue, exchange, routingKey);
-
-            //creates dead letter queue
-            string deadLetterQueue = (queue + ".dlq");
-            _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
-
             //channel
             IModel channel;
-            if (_publishSubscriberChannels.ContainsKey(prefetchCount) == false)
+            if (_eventListenerChannels.ContainsKey(prefetchCount) == false)
             {
                 channel = _connection.CreateModel();
                 channel.BasicQos(0, prefetchCount, false);
-                _publishSubscriberChannels.Add(prefetchCount, channel);
+                _eventListenerChannels.Add(prefetchCount, channel);
             }
             else
-                channel = _publishSubscriberChannels[prefetchCount];
+                channel = _eventListenerChannels[prefetchCount];
+
+            //retry handler
+            IRetry retryHandler = new RetryHandler(0, 0, 0, false);
+
+            //creates queue and exchanges
+            string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : "*"));
+            string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : ""));
+            string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + (topic != null ? ("-" + topic.ToLower()) : ""));
+            channel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
+            _deadLetterQueueChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
+            channel.QueueDeclare(queue, true, false, false, null);
+            channel.QueueBind(queue, exchange, routingKey);
+            channel.QueueBind(queue, DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey);
+
+            //creates dead letter queue
+            string deadLetterQueue = (queue + "-dlq");
+            _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
+            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : "") + ".dlq"); ;
+            _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
             //message listener
             EventingBasicConsumer consumer = new EventingBasicConsumer(channel);
@@ -319,7 +331,7 @@ namespace AgileSB.Bus
                             properties.Headers.Add("SendDate", DateTime.UtcNow.Serialize());
                             properties.Headers.Add("RetryIndex", (++retryIndex).Serialize());
                             properties.Persistent = true;
-                            _senderChannel.BasicPublish("", deadLetterQueue, properties, args.Body);
+                            _deadLetterQueueChannel.BasicPublish(DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey, properties, args.Body);
                         }
                     }
 
@@ -349,7 +361,7 @@ namespace AgileSB.Bus
 
                     foreach (BasicGetResult bgr in bgrs)
                     {
-                        _deadLetterQueueChannel.BasicPublish("", queue, bgr.BasicProperties, bgr.Body);
+                        _deadLetterQueueChannel.BasicPublish(DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey, bgr.BasicProperties, bgr.Body);
                         _deadLetterQueueChannel.BasicAck(bgr.DeliveryTag, false);
                     }
                 }
@@ -493,10 +505,10 @@ namespace AgileSB.Bus
         public void Dispose()
         {
             _senderChannel.Dispose();
-            _requestSubscriberChannel.Dispose();
-            _responseChannel.Dispose();
+            _requestListenerChannel.Dispose();
+            _responseListenerChannel.Dispose();
             _deadLetterQueueChannel.Dispose();
-            foreach (KeyValuePair<int, IModel> entry in _publishSubscriberChannels)
+            foreach (KeyValuePair<int, IModel> entry in _eventListenerChannels)
                 entry.Value.Dispose();
 
             _connection.Dispose();
