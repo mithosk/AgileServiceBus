@@ -1,17 +1,18 @@
-﻿using Autofac;
-using NCrontab;
-using AgileSB.Attributes;
+﻿using AgileSB.Attributes;
 using AgileSB.DTO;
 using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
 using AgileSB.Log;
 using AgileSB.Utilities;
+using AgileServiceBus.Interfaces;
+using AgileServiceBus.Utilities;
+using Autofac;
+using NCrontab;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
@@ -24,18 +25,20 @@ namespace AgileSB.Bus
         private const ushort RESPONSE_PREFETCHCOUNT = 50;
         private const int REQUEST_TIMEOUT = 7000;
         private const int DEAD_LETTER_QUEUE_RECOVERY_LIMIT = 1000;
-        private const ushort RETRY_LIMIT = 5;
+        private const ushort MIN_RETRY_DELAY = 1;
         private const ushort MAX_RETRY_DELAY = 250;
+        private const ushort RETRY_LIMIT = 5;
         private const ushort NUMBER_OF_THREADS = 5;
+        private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
 
         private IConnection _connection;
         private IModel _senderChannel;
-        private IModel _requestSubscriberChannel;
-        private IModel _responseChannel;
-        private Dictionary<int, IModel> _publishSubscriberChannels;
+        private IModel _requestListenerChannel;
+        private IModel _responseListenerChannel;
+        private Dictionary<int, IModel> _eventListenerChannels;
         private IModel _deadLetterQueueChannel;
         private string _appId;
-        private string _responseQueue;
+        private string _responseRoutingKey;
         private ResponseWaiter _responseWaiter;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
@@ -59,11 +62,11 @@ namespace AgileSB.Bus
 
             //creates channels
             _senderChannel = _connection.CreateModel();
-            _requestSubscriberChannel = _connection.CreateModel();
-            _requestSubscriberChannel.BasicQos(0, REQUEST_PREFETCHCOUNT, false);
-            _responseChannel = _connection.CreateModel();
-            _responseChannel.BasicQos(0, RESPONSE_PREFETCHCOUNT, false);
-            _publishSubscriberChannels = new Dictionary<int, IModel>();
+            _requestListenerChannel = _connection.CreateModel();
+            _requestListenerChannel.BasicQos(0, REQUEST_PREFETCHCOUNT, false);
+            _responseListenerChannel = _connection.CreateModel();
+            _responseListenerChannel.BasicQos(0, RESPONSE_PREFETCHCOUNT, false);
+            _eventListenerChannels = new Dictionary<int, IModel>();
             _deadLetterQueueChannel = _connection.CreateModel();
 
             //application identifier
@@ -76,16 +79,21 @@ namespace AgileSB.Bus
             _responseWaiter = new ResponseWaiter(REQUEST_TIMEOUT);
 
             //response listener
-            _responseQueue = (_appId + "." + Guid.NewGuid().ToString());
-            _responseChannel.QueueDeclare(_responseQueue, false, true, true, null);
-            EventingBasicConsumer consumer = new EventingBasicConsumer(_responseChannel);
+            Guid responseGuid = Guid.NewGuid();
+            string responseQueue = (_appId.ToLower() + "-response-" + responseGuid.ToString("N"));
+            string responseExchange = (_appId.ToLower() + "_response");
+            _responseRoutingKey = responseGuid.ToString("N");
+            _responseListenerChannel.QueueDeclare(responseQueue, false, true, true, null);
+            _responseListenerChannel.ExchangeDeclare(responseExchange, ExchangeType.Direct, true, false);
+            _responseListenerChannel.QueueBind(responseQueue, responseExchange, _responseRoutingKey);
+            EventingBasicConsumer consumer = new EventingBasicConsumer(_responseListenerChannel);
             consumer.Received += (obj, args) =>
             {
                 _responseWaiter.Resolve(args.BasicProperties.CorrelationId, Encoding.UTF8.GetString(args.Body));
-                _responseChannel.BasicAck(args.DeliveryTag, false);
+                _responseListenerChannel.BasicAck(args.DeliveryTag, false);
             };
 
-            _responseChannel.BasicConsume(_responseQueue, false, consumer);
+            _responseListenerChannel.BasicConsume(responseQueue, false, consumer);
 
             //builded container
             _container = null;
@@ -104,9 +112,11 @@ namespace AgileSB.Bus
                 //validation
                 request.Validate();
 
-                //exchange
+                //message direction
                 string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
-                string exchange = (directory + ".Request." + request.GetType().Name);
+                string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+                string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+                string routingKey = request.GetType().Name.ToLower();
 
                 //correlation
                 string correlationId = Guid.NewGuid().ToString();
@@ -117,12 +127,13 @@ namespace AgileSB.Bus
                 //request message
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
                 properties.AppId = _appId;
-                properties.ReplyTo = _responseQueue;
                 properties.CorrelationId = correlationId;
                 properties.Headers = new Dictionary<string, object>();
+                properties.Headers.Add("ReplyToExchange", (_appId.ToLower() + "_response"));
+                properties.Headers.Add("ReplyToRoutingKey", _responseRoutingKey);
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Persistent = false;
-                _senderChannel.BasicPublish(exchange, "", properties, Encoding.UTF8.GetBytes(request.Serialize()));
+                _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
 
                 //waiting response
                 Response<TResponse> response = null;
@@ -157,14 +168,11 @@ namespace AgileSB.Bus
                 //validation
                 message.Validate();
 
-                //creates queue and exchange
+                //message direction
                 string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
                 string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-                string exchange = (directory + ".Message." + typeof(TMessage).Name);
-                string queue = (directory + "." + subdirectory + ".Message." + typeof(TMessage).Name + (topic == null ? "" : "." + topic));
-                _senderChannel.QueueDeclare(queue, true, false, false, null);
-                _senderChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
-                _senderChannel.QueueBind(queue, exchange, (topic ?? ""));
+                string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
+                string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
 
                 //message publishing
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
@@ -174,26 +182,30 @@ namespace AgileSB.Bus
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Headers.Add("RetryIndex", 0.Serialize());
                 properties.Persistent = true;
-                _senderChannel.BasicPublish(exchange, (topic ?? ""), properties, Encoding.UTF8.GetBytes(message.Serialize()));
+                _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(message.Serialize()));
             }));
         }
 
-        public void Subscribe<TSubscriber, TRequest>(bool retry) where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
+        public IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
 
+            //retry handler
+            IRetry retryHandler = new RetryHandler(MIN_RETRY_DELAY, MAX_RETRY_DELAY, RETRY_LIMIT, true);
+
             //creates queue and exchange
             string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = (directory + ".Request." + typeof(TRequest).Name);
-            string queue = (directory + "." + subdirectory + ".Request." + typeof(TRequest).Name);
-            _requestSubscriberChannel.ExchangeDeclare(exchange, ExchangeType.Fanout, true, false);
-            _requestSubscriberChannel.QueueDeclare(queue, true, false, false, null);
-            _requestSubscriberChannel.QueueBind(queue, exchange, "");
+            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = typeof(TRequest).Name.ToLower();
+            string queue = (_appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower());
+            _requestListenerChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
+            _requestListenerChannel.QueueDeclare(queue, true, false, false, null);
+            _requestListenerChannel.QueueBind(queue, exchange, routingKey);
 
             //request listener
-            EventingBasicConsumer consumer = new EventingBasicConsumer(_requestSubscriberChannel);
+            EventingBasicConsumer consumer = new EventingBasicConsumer(_requestListenerChannel);
             consumer.Received += (obj, args) =>
             {
                 _dispatcher.Dispatch(async () =>
@@ -205,39 +217,24 @@ namespace AgileSB.Bus
 
                     //response action
                     Response<object> response = new Response<object>();
-                    ushort retryLimit = (retry == true ? RETRY_LIMIT : ((ushort)0));
-                    Random rnd = new Random();
-                    for (ushort i = 0; i <= retryLimit; i++)
-                    {
-                        try
-                        {
-                            TRequest request = message.Deserialize<TRequest>();
-                            request.Validate();
-                            using (ILifetimeScope container = _container.BeginLifetimeScope())
-                            {
-                                TSubscriber subscriber = container.Resolve<TSubscriber>();
-                                subscriber.Bus = this;
-                                response.Data = await subscriber.ResponseAsync(request);
-                            }
 
-                            break;
-                        }
-                        catch (ValidationException e)
+                    await retryHandler.ExecuteAsync(async () =>
+                    {
+                        TRequest request = message.Deserialize<TRequest>();
+                        request.Validate();
+                        using (ILifetimeScope container = _container.BeginLifetimeScope())
                         {
-                            await LogOnResponseError(queue, args, e, 0, 0);
-                            response.ExceptionCode = "Validation";
-                            response.ExceptionMessage = e.Message;
-                            break;
+                            TSubscriber subscriber = container.Resolve<TSubscriber>();
+                            subscriber.Bus = this;
+                            response.Data = await subscriber.ResponseAsync(request);
                         }
-                        catch (Exception e)
-                        {
-                            await LogOnResponseError(queue, args, e, i, retryLimit);
-                            response.ExceptionCode = e.GetType().Name.Replace("Exception", "");
-                            response.ExceptionMessage = e.Message;
-                            if (i < retryLimit)
-                                await Task.Delay(rnd.Next(0, MAX_RETRY_DELAY));
-                        }
-                    }
+                    },
+                    async (exception, retryIndex, retryLimit) =>
+                    {
+                        await LogOnResponseError(queue, args, exception, retryIndex, retryLimit);
+                        response.ExceptionCode = exception.GetType().Name.Replace("Exception", "");
+                        response.ExceptionMessage = exception.Message;
+                    });
 
                     //response message
                     if (typeof(TSubscriber).GetMethod("ResponseAsync").GetCustomAttribute<FakeResponse>() == null)
@@ -246,47 +243,58 @@ namespace AgileSB.Bus
                         IBasicProperties properties = _senderChannel.CreateBasicProperties();
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
-                        _senderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(message));
+                        _senderChannel.BasicPublish(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToExchange"]), Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToRoutingKey"]), properties, Encoding.UTF8.GetBytes(message));
 
                         await LogOnResponse(queue, message, args);
                     }
 
                     //acknowledgment
-                    _requestSubscriberChannel.BasicAck(args.DeliveryTag, false);
+                    _requestListenerChannel.BasicAck(args.DeliveryTag, false);
                 });
             };
 
-            _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(_requestSubscriberChannel, queue, consumer));
+            _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(_requestListenerChannel, queue, consumer));
+
+            return retryHandler;
         }
 
-        public void Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, ushort? retryLimit, TimeSpan? retryDelay) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
+        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
 
-            //creates queue and exchange
-            string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = (directory + ".Message." + typeof(TMessage).Name);
-            string queue = (directory + "." + subdirectory + ".Message." + typeof(TMessage).Name + (topic == null ? "" : ("." + topic)));
-            _requestSubscriberChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
-            _requestSubscriberChannel.QueueDeclare(queue, true, false, false, null);
-            _requestSubscriberChannel.QueueBind(queue, exchange, (topic ?? "#"));
-
-            //creates dead letter queue
-            string deadLetterQueue = (queue + ".DLQ");
-            _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
-
             //channel
             IModel channel;
-            if (_publishSubscriberChannels.ContainsKey(prefetchCount) == false)
+            if (_eventListenerChannels.ContainsKey(prefetchCount) == false)
             {
                 channel = _connection.CreateModel();
                 channel.BasicQos(0, prefetchCount, false);
-                _publishSubscriberChannels.Add(prefetchCount, channel);
+                _eventListenerChannels.Add(prefetchCount, channel);
             }
             else
-                channel = _publishSubscriberChannels[prefetchCount];
+                channel = _eventListenerChannels[prefetchCount];
+
+            //retry handler
+            IRetry retryHandler = new RetryHandler(0, 0, 0, false);
+
+            //creates queue and exchanges
+            string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : "*"));
+            string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : ""));
+            string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + (topic != null ? ("-" + topic.ToLower()) : ""));
+            channel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
+            _deadLetterQueueChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
+            channel.QueueDeclare(queue, true, false, false, null);
+            channel.QueueBind(queue, exchange, routingKey);
+            channel.QueueBind(queue, DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey);
+
+            //creates dead letter queue
+            string deadLetterQueue = (queue + "-dlq");
+            _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
+            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : "") + ".dlq"); ;
+            _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
             //message listener
             EventingBasicConsumer consumer = new EventingBasicConsumer(channel);
@@ -309,16 +317,12 @@ namespace AgileSB.Bus
 
                         await LogOnConsumed(queue, args);
                     }
-                    catch (ValidationException e)
+                    catch (Exception exception)
                     {
-                        await LogOnConsumeError(queue, args, e, 0);
-                    }
-                    catch (Exception e)
-                    {
-                        await LogOnConsumeError(queue, args, e, retryLimit);
+                        await LogOnConsumeError(queue, args, exception, retryLimit);
 
-                        uint retryIndex = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"])).Deserialize<uint>();
-                        if (retryDelay != null && (retryLimit == null || retryIndex < retryLimit))
+                        ushort retryIndex = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"])).Deserialize<ushort>();
+                        if (retryHandler.IsForRetry(exception) && !String.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
                         {
                             IBasicProperties properties = _deadLetterQueueChannel.CreateBasicProperties();
                             properties.AppId = _appId;
@@ -327,7 +331,7 @@ namespace AgileSB.Bus
                             properties.Headers.Add("SendDate", DateTime.UtcNow.Serialize());
                             properties.Headers.Add("RetryIndex", (++retryIndex).Serialize());
                             properties.Persistent = true;
-                            _senderChannel.BasicPublish("", deadLetterQueue, properties, args.Body);
+                            _deadLetterQueueChannel.BasicPublish(DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey, properties, args.Body);
                         }
                     }
 
@@ -343,7 +347,7 @@ namespace AgileSB.Bus
             {
                 while (true)
                 {
-                    await Task.Delay(retryDelay.Value);
+                    await CronDelay(retryCron);
 
                     List<BasicGetResult> bgrs = new List<BasicGetResult>();
                     for (int i = 0; i < DEAD_LETTER_QUEUE_RECOVERY_LIMIT; i++)
@@ -357,11 +361,13 @@ namespace AgileSB.Bus
 
                     foreach (BasicGetResult bgr in bgrs)
                     {
-                        _deadLetterQueueChannel.BasicPublish("", queue, bgr.BasicProperties, bgr.Body);
+                        _deadLetterQueueChannel.BasicPublish(DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey, bgr.BasicProperties, bgr.Body);
                         _deadLetterQueueChannel.BasicAck(bgr.DeliveryTag, false);
                     }
                 }
             });
+
+            return retryHandler;
         }
 
         public void Schedule<TMessage>(string cron, Func<TMessage> createMessage, Func<Exception, Task> onError) where TMessage : class
@@ -372,10 +378,7 @@ namespace AgileSB.Bus
                 {
                     try
                     {
-                        CrontabSchedule schedule = CrontabSchedule.Parse(cron);
-                        DateTime nextDate = schedule.GetNextOccurrence(DateTime.UtcNow);
-                        TimeSpan delay = (nextDate - DateTime.UtcNow);
-                        await Task.Delay(delay);
+                        await CronDelay(cron);
 
                         await PublishAsync(createMessage());
                     }
@@ -490,13 +493,22 @@ namespace AgileSB.Bus
             }
         }
 
+        private async Task CronDelay(string cron)
+        {
+            CrontabSchedule schedule = CrontabSchedule.Parse(cron);
+            DateTime nextDate = schedule.GetNextOccurrence(DateTime.UtcNow);
+            TimeSpan delay = (nextDate - DateTime.UtcNow);
+
+            await Task.Delay(delay);
+        }
+
         public void Dispose()
         {
             _senderChannel.Dispose();
-            _requestSubscriberChannel.Dispose();
-            _responseChannel.Dispose();
+            _requestListenerChannel.Dispose();
+            _responseListenerChannel.Dispose();
             _deadLetterQueueChannel.Dispose();
-            foreach (KeyValuePair<int, IModel> entry in _publishSubscriberChannels)
+            foreach (KeyValuePair<int, IModel> entry in _eventListenerChannels)
                 entry.Value.Dispose();
 
             _connection.Dispose();

@@ -1,4 +1,5 @@
-﻿using Autofac;
+﻿using AgileServiceBus.Interfaces;
+using Autofac;
 using System;
 
 namespace AgileSB.Interfaces
@@ -8,8 +9,8 @@ namespace AgileSB.Interfaces
         ILogger Logger { set; }
         ContainerBuilder Container { get; }
 
-        void Subscribe<TSubscriber, TRequest>(bool retry) where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class;
-        void Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, ushort? retryLimit, TimeSpan? retryDelay) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class;
+        IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class;
+        IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class;
         void RegistrationCompleted();
     }
 }
