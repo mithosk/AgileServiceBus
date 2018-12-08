@@ -118,6 +118,9 @@ namespace AgileSB.Bus
                 string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
                 string routingKey = request.GetType().Name.ToLower();
 
+                //creates exchange
+                _senderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
+
                 //correlation
                 string correlationId = Guid.NewGuid().ToString();
 
@@ -173,6 +176,9 @@ namespace AgileSB.Bus
                 string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
                 string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
                 string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
+
+                //creates exchange
+                _senderChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
 
                 //message publishing
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();

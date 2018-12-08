@@ -2,8 +2,8 @@
 <package>
   <metadata>
     <id>AgileServiceBus</id>
-    <version>0.12.5</version>
-    <releaseNotes>Retry Management</releaseNotes>
+    <version>0.12.8</version>
+    <releaseNotes>Bug Fixing</releaseNotes>
     <title>AgileServiceBus</title>
     <description>.NET Core Microservices Framework</description>
     <tags>Microservices Messaging RabbitMQ</tags>
