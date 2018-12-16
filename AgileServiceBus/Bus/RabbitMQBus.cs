@@ -28,7 +28,6 @@ namespace AgileSB.Bus
         private const ushort MIN_RETRY_DELAY = 1;
         private const ushort MAX_RETRY_DELAY = 250;
         private const ushort RETRY_LIMIT = 5;
-        private const ushort NUMBER_OF_THREADS = 5;
         private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
 
         private IConnection _connection;
@@ -42,7 +41,6 @@ namespace AgileSB.Bus
         private ResponseWaiter _responseWaiter;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
-        private TaskDispatcher _dispatcher;
 
         public ILogger Logger { get; set; }
         public ContainerBuilder Container { get; }
@@ -89,8 +87,11 @@ namespace AgileSB.Bus
             EventingBasicConsumer consumer = new EventingBasicConsumer(_responseListenerChannel);
             consumer.Received += (obj, args) =>
             {
-                _responseWaiter.Resolve(args.BasicProperties.CorrelationId, Encoding.UTF8.GetString(args.Body));
-                _responseListenerChannel.BasicAck(args.DeliveryTag, false);
+                Task.Factory.StartNew(() =>
+                {
+                    _responseWaiter.Resolve(args.BasicProperties.CorrelationId, Encoding.UTF8.GetString(args.Body));
+                    _responseListenerChannel.BasicAck(args.DeliveryTag, false);
+                });
             };
 
             _responseListenerChannel.BasicConsume(responseQueue, false, consumer);
@@ -100,14 +101,11 @@ namespace AgileSB.Bus
 
             //list of to activate consumers
             _toActivateConsumers = new List<Tuple<IModel, string, EventingBasicConsumer>>();
-
-            //task schedulers
-            _dispatcher = new TaskDispatcher(NUMBER_OF_THREADS);
         }
 
         public Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            return (Task.Factory.StartNew(() =>
+            return Task.Factory.StartNew(() =>
             {
                 //validation
                 request.Validate();
@@ -156,7 +154,7 @@ namespace AgileSB.Bus
 
                 //success
                 return (response.Data);
-            }));
+            });
         }
 
         public async Task PublishAsync<TMessage>(TMessage message) where TMessage : class
@@ -166,7 +164,7 @@ namespace AgileSB.Bus
 
         public Task PublishAsync<TMessage>(TMessage message, string topic) where TMessage : class
         {
-            return (Task.Factory.StartNew(() =>
+            return Task.Factory.StartNew(() =>
             {
                 //validation
                 message.Validate();
@@ -189,7 +187,7 @@ namespace AgileSB.Bus
                 properties.Headers.Add("RetryIndex", 0.Serialize());
                 properties.Persistent = true;
                 _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(message.Serialize()));
-            }));
+            });
         }
 
         public IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
@@ -214,7 +212,7 @@ namespace AgileSB.Bus
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestListenerChannel);
             consumer.Received += (obj, args) =>
             {
-                _dispatcher.Dispatch(async () =>
+                Task.Factory.StartNew(async () =>
                 {
                     await LogOnRequest(queue, args);
 
@@ -306,7 +304,7 @@ namespace AgileSB.Bus
             EventingBasicConsumer consumer = new EventingBasicConsumer(channel);
             consumer.Received += (obj, args) =>
             {
-                _dispatcher.Dispatch(async () =>
+                Task.Factory.StartNew(async () =>
                 {
                     await LogOnPublish(queue, args);
 
@@ -349,7 +347,7 @@ namespace AgileSB.Bus
             _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(channel, queue, consumer));
 
             //message restore
-            _dispatcher.Dispatch(async () =>
+            Task.Factory.StartNew(async () =>
             {
                 while (true)
                 {
@@ -378,7 +376,7 @@ namespace AgileSB.Bus
 
         public void Schedule<TMessage>(string cron, Func<TMessage> createMessage, Func<Exception, Task> onError) where TMessage : class
         {
-            _dispatcher.Dispatch(async () =>
+            Task.Factory.StartNew(async () =>
             {
                 while (true)
                 {
