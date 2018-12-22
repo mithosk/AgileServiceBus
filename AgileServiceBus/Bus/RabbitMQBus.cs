@@ -111,9 +111,15 @@ namespace AgileSB.Bus
             _cancellationTokenSource = new CancellationTokenSource();
         }
 
-        public Task<TResponse> RequestAsync<TResponse>(object request)
+        public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            return Task.Factory.StartNew(() =>
+            //correlation
+            string correlationId = Guid.NewGuid().ToString();
+
+            //response object
+            Response<TResponse> response = null;
+
+            await Task.Factory.StartNew(() =>
             {
                 //validation
                 request.Validate();
@@ -126,9 +132,6 @@ namespace AgileSB.Bus
 
                 //creates exchange
                 _senderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
-
-                //correlation
-                string correlationId = Guid.NewGuid().ToString();
 
                 //waiter for response
                 _responseWaiter.Register(correlationId);
@@ -143,9 +146,14 @@ namespace AgileSB.Bus
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Persistent = false;
                 _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default);
 
+            await Task.Factory.StartNew(() =>
+            {
                 //waiting response
-                Response<TResponse> response = null;
                 string message = _responseWaiter.Wait(correlationId);
                 if (message != null)
                     response = message.Deserialize<Response<TResponse>>();
@@ -159,13 +167,13 @@ namespace AgileSB.Bus
                 //remote error
                 if (response.ExceptionCode != null)
                     throw (new RemoteException(response.ExceptionCode, response.ExceptionMessage));
-
-                //success
-                return (response.Data);
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
             TaskScheduler.Default);
+
+            //response
+            return response.Data;
         }
 
         public async Task PublishAsync<TMessage>(TMessage message) where TMessage : class
@@ -173,9 +181,9 @@ namespace AgileSB.Bus
             await PublishAsync(message, null);
         }
 
-        public Task PublishAsync<TMessage>(TMessage message, string topic) where TMessage : class
+        public async Task PublishAsync<TMessage>(TMessage message, string topic) where TMessage : class
         {
-            return Task.Factory.StartNew(() =>
+            await Task.Factory.StartNew(() =>
             {
                 //validation
                 message.Validate();
