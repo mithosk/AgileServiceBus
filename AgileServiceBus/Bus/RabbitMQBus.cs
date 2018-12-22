@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace AgileSB.Bus
@@ -41,6 +42,7 @@ namespace AgileSB.Bus
         private ResponseWaiter _responseWaiter;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
+        private CancellationTokenSource _cancellationTokenSource;
 
         public ILogger Logger { get; set; }
         public ContainerBuilder Container { get; }
@@ -91,7 +93,10 @@ namespace AgileSB.Bus
                 {
                     _responseWaiter.Resolve(args.BasicProperties.CorrelationId, Encoding.UTF8.GetString(args.Body));
                     _responseListenerChannel.BasicAck(args.DeliveryTag, false);
-                });
+                },
+                _cancellationTokenSource.Token,
+                TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default);
             };
 
             _responseListenerChannel.BasicConsume(responseQueue, false, consumer);
@@ -101,6 +106,9 @@ namespace AgileSB.Bus
 
             //list of to activate consumers
             _toActivateConsumers = new List<Tuple<IModel, string, EventingBasicConsumer>>();
+
+            //cancellation token
+            _cancellationTokenSource = new CancellationTokenSource();
         }
 
         public Task<TResponse> RequestAsync<TResponse>(object request)
@@ -154,7 +162,10 @@ namespace AgileSB.Bus
 
                 //success
                 return (response.Data);
-            });
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default);
         }
 
         public async Task PublishAsync<TMessage>(TMessage message) where TMessage : class
@@ -187,7 +198,10 @@ namespace AgileSB.Bus
                 properties.Headers.Add("RetryIndex", 0.Serialize());
                 properties.Persistent = true;
                 _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(message.Serialize()));
-            });
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default);
         }
 
         public IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
@@ -254,7 +268,10 @@ namespace AgileSB.Bus
 
                     //acknowledgment
                     _requestListenerChannel.BasicAck(args.DeliveryTag, false);
-                });
+                },
+                _cancellationTokenSource.Token,
+                TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default);
             };
 
             _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(_requestListenerChannel, queue, consumer));
@@ -341,7 +358,10 @@ namespace AgileSB.Bus
 
                     //acknowledgment
                     channel.BasicAck(args.DeliveryTag, false);
-                });
+                },
+                _cancellationTokenSource.Token,
+                TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default);
             };
 
             _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(channel, queue, consumer));
@@ -369,7 +389,10 @@ namespace AgileSB.Bus
                         _deadLetterQueueChannel.BasicAck(bgr.DeliveryTag, false);
                     }
                 }
-            });
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default);
 
             return retryHandler;
         }
@@ -391,7 +414,10 @@ namespace AgileSB.Bus
                         await onError(e);
                     }
                 }
-            });
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default);
         }
 
         public void RegistrationCompleted()
@@ -508,6 +534,9 @@ namespace AgileSB.Bus
 
         public void Dispose()
         {
+            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Dispose();
+
             _senderChannel.Dispose();
             _requestListenerChannel.Dispose();
             _responseListenerChannel.Dispose();
