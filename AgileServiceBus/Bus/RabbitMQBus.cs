@@ -32,6 +32,8 @@ namespace AgileSB.Bus
         private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
         private const byte OUTPUT_NUMBER_OF_THREADS = 5;
         private const byte INPUT_NUMBER_OF_THREADS = 15;
+        private const byte OUTPUT_NUMBER_OF_CRON = 1;
+        private const byte OUTPUT_NUMBER_OF_RECEIVE = 1;
 
         private IConnection _connection;
         private IModel _senderChannel;
