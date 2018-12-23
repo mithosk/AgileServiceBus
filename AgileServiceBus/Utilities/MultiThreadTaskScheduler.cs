@@ -17,6 +17,8 @@ namespace AgileSB.Utilities
         {
             _tasks = new BlockingCollection<Task>();
 
+            _cancellationTokenSource = new CancellationTokenSource();
+
             _threads = new Thread[numberOfThreads];
             for (byte i = 0; i < numberOfThreads; i++)
             {
@@ -26,8 +28,6 @@ namespace AgileSB.Utilities
                 _threads[i].Priority = ThreadPriority.Normal;
                 _threads[i].Start();
             }
-
-            _cancellationTokenSource = new CancellationTokenSource();
         }
 
         protected override void QueueTask(Task task)

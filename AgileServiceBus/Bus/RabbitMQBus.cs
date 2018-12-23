@@ -30,8 +30,8 @@ namespace AgileSB.Bus
         private const ushort MAX_RETRY_DELAY = 250;
         private const ushort RETRY_LIMIT = 5;
         private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
-        private const byte OUTPUT_NUMBER_OF_THREADS = 5;
-        private const byte INPUT_NUMBER_OF_THREADS = 15;
+        private const byte OUTPUT_NUMBER_OF_THREADS = 4;
+        private const byte INPUT_NUMBER_OF_THREADS = 16;
         private const byte CRON_NUMBER_OF_THREADS = 1;
         private const byte RESPONSE_NUMBER_OF_THREADS = 1;
 
