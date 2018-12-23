@@ -32,8 +32,8 @@ namespace AgileSB.Bus
         private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
         private const byte OUTPUT_NUMBER_OF_THREADS = 5;
         private const byte INPUT_NUMBER_OF_THREADS = 15;
-        private const byte OUTPUT_NUMBER_OF_CRON = 1;
-        private const byte OUTPUT_NUMBER_OF_RECEIVE = 1;
+        private const byte CRON_NUMBER_OF_THREADS = 1;
+        private const byte RESPONSE_NUMBER_OF_THREADS = 1;
 
         private IConnection _connection;
         private IModel _senderChannel;
@@ -46,6 +46,10 @@ namespace AgileSB.Bus
         private ResponseWaiter _responseWaiter;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
+        private MultiThreadTaskScheduler _outputTaskScheduler;
+        private MultiThreadTaskScheduler _inputTaskScheduler;
+        private MultiThreadTaskScheduler _cronTaskScheduler;
+        private MultiThreadTaskScheduler _responseTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
 
         public ILogger Logger { get; set; }
@@ -100,7 +104,7 @@ namespace AgileSB.Bus
                 },
                 _cancellationTokenSource.Token,
                 TaskCreationOptions.DenyChildAttach,
-                TaskScheduler.Default);
+                _responseTaskScheduler);
             };
 
             _responseListenerChannel.BasicConsume(responseQueue, false, consumer);
@@ -110,6 +114,12 @@ namespace AgileSB.Bus
 
             //list of to activate consumers
             _toActivateConsumers = new List<Tuple<IModel, string, EventingBasicConsumer>>();
+
+            //custom task schedulers
+            _outputTaskScheduler = new MultiThreadTaskScheduler(OUTPUT_NUMBER_OF_THREADS);
+            _inputTaskScheduler = new MultiThreadTaskScheduler(INPUT_NUMBER_OF_THREADS);
+            _cronTaskScheduler = new MultiThreadTaskScheduler(CRON_NUMBER_OF_THREADS);
+            _responseTaskScheduler = new MultiThreadTaskScheduler(RESPONSE_NUMBER_OF_THREADS);
 
             //cancellation token
             _cancellationTokenSource = new CancellationTokenSource();
@@ -153,7 +163,7 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            TaskScheduler.Default);
+            _outputTaskScheduler);
 
             await Task.Factory.StartNew(() =>
             {
@@ -174,7 +184,7 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            TaskScheduler.Default);
+            _inputTaskScheduler);
 
             //response
             return response.Data;
@@ -213,7 +223,7 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            TaskScheduler.Default);
+            _outputTaskScheduler);
         }
 
         public IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
@@ -404,7 +414,7 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            TaskScheduler.Default);
+            _cronTaskScheduler);
 
             return retryHandler;
         }
@@ -429,7 +439,7 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            TaskScheduler.Default);
+            _cronTaskScheduler);
         }
 
         public void RegistrationCompleted()
@@ -548,6 +558,11 @@ namespace AgileSB.Bus
         {
             _cancellationTokenSource.Cancel();
             _cancellationTokenSource.Dispose();
+
+            _outputTaskScheduler.Dispose();
+            _inputTaskScheduler.Dispose();
+            _cronTaskScheduler.Dispose();
+            _responseTaskScheduler.Dispose();
 
             _senderChannel.Dispose();
             _requestListenerChannel.Dispose();
