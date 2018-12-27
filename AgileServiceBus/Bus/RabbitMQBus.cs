@@ -557,7 +557,6 @@ namespace AgileSB.Bus
         public void Dispose()
         {
             _cancellationTokenSource.Cancel();
-            _cancellationTokenSource.Dispose();
 
             _outputTaskScheduler.Dispose();
             _inputTaskScheduler.Dispose();
