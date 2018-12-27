@@ -5,7 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AgileSB.Utilities
+namespace AgileServiceBus.Utilities
 {
     public class MultiThreadTaskScheduler : TaskScheduler, IDisposable
     {
@@ -15,9 +15,9 @@ namespace AgileSB.Utilities
 
         public MultiThreadTaskScheduler(byte numberOfThreads)
         {
-            _tasks = new BlockingCollection<Task>();
-
             _cancellationTokenSource = new CancellationTokenSource();
+
+            _tasks = new BlockingCollection<Task>();
 
             _threads = new Thread[numberOfThreads];
             for (byte i = 0; i < numberOfThreads; i++)
@@ -32,17 +32,27 @@ namespace AgileSB.Utilities
 
         protected override void QueueTask(Task task)
         {
-            _tasks.Add(task, _cancellationTokenSource.Token);
+            try
+            {
+                _tasks.Add(task, _cancellationTokenSource.Token);
+            }
+            catch (OperationCanceledException) { }
         }
 
         protected override IEnumerable<Task> GetScheduledTasks()
         {
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
+                return new List<Task>();
+
             return _tasks.ToList();
         }
 
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
         {
-            if (!_threads.Any(thr => thr.ManagedThreadId == Thread.CurrentThread.ManagedThreadId))
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
+                return false;
+
+            if (!_threads.Contains(Thread.CurrentThread))
                 return false;
 
             TryExecuteTask(task);
