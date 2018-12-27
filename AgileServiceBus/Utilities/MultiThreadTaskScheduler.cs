@@ -11,10 +11,12 @@ namespace AgileServiceBus.Utilities
     {
         private BlockingCollection<Task> _tasks;
         private Thread[] _threads;
-        private bool _disposed;
+        private CancellationTokenSource _cancellationTokenSource;
 
         public MultiThreadTaskScheduler(byte numberOfThreads)
         {
+            _cancellationTokenSource = new CancellationTokenSource();
+
             _tasks = new BlockingCollection<Task>();
 
             _threads = new Thread[numberOfThreads];
@@ -26,22 +28,20 @@ namespace AgileServiceBus.Utilities
                 _threads[i].Priority = ThreadPriority.Normal;
                 _threads[i].Start();
             }
-
-            _disposed = false;
         }
 
         protected override void QueueTask(Task task)
         {
             try
             {
-                _tasks.Add(task);
+                _tasks.Add(task, _cancellationTokenSource.Token);
             }
-            catch (ObjectDisposedException) { }
+            catch (OperationCanceledException) { }
         }
 
         protected override IEnumerable<Task> GetScheduledTasks()
         {
-            if (_disposed)
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
                 return new List<Task>();
 
             return _tasks.ToList();
@@ -49,7 +49,7 @@ namespace AgileServiceBus.Utilities
 
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
         {
-            if (_disposed)
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
                 return false;
 
             if (!_threads.Contains(Thread.CurrentThread))
@@ -63,17 +63,15 @@ namespace AgileServiceBus.Utilities
         {
             try
             {
-                foreach (Task task in _tasks.GetConsumingEnumerable())
+                foreach (Task task in _tasks.GetConsumingEnumerable(_cancellationTokenSource.Token))
                     TryExecuteTask(task);
             }
-            catch (ObjectDisposedException) { }
+            catch (OperationCanceledException) { }
         }
 
         public void Dispose()
         {
-            _disposed = true;
-
-            _tasks.Dispose();
+            _cancellationTokenSource.Cancel();
         }
     }
 }
