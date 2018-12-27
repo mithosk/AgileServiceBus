@@ -32,7 +32,7 @@ namespace AgileSB.Bus
         private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
         private const byte OUTPUT_NUMBER_OF_THREADS = 4;
         private const byte INPUT_NUMBER_OF_THREADS = 16;
-        private const byte CRON_NUMBER_OF_THREADS = 1;
+        private const byte DEAD_LETTER_QUEUE_NUMBER_OF_THREADS = 1;
         private const byte RESPONSE_NUMBER_OF_THREADS = 1;
 
         private IConnection _connection;
@@ -48,7 +48,7 @@ namespace AgileSB.Bus
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _outputTaskScheduler;
         private MultiThreadTaskScheduler _inputTaskScheduler;
-        private MultiThreadTaskScheduler _cronTaskScheduler;
+        private MultiThreadTaskScheduler _deadLetterQueueTaskScheduler;
         private MultiThreadTaskScheduler _responseTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
 
@@ -118,7 +118,7 @@ namespace AgileSB.Bus
             //custom task schedulers
             _outputTaskScheduler = new MultiThreadTaskScheduler(OUTPUT_NUMBER_OF_THREADS);
             _inputTaskScheduler = new MultiThreadTaskScheduler(INPUT_NUMBER_OF_THREADS);
-            _cronTaskScheduler = new MultiThreadTaskScheduler(CRON_NUMBER_OF_THREADS);
+            _deadLetterQueueTaskScheduler = new MultiThreadTaskScheduler(DEAD_LETTER_QUEUE_NUMBER_OF_THREADS);
             _responseTaskScheduler = new MultiThreadTaskScheduler(RESPONSE_NUMBER_OF_THREADS);
 
             //cancellation token
@@ -414,7 +414,7 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            _cronTaskScheduler);
+            _deadLetterQueueTaskScheduler);
 
             return retryHandler;
         }
@@ -439,7 +439,7 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            _cronTaskScheduler);
+            TaskScheduler.Default);
         }
 
         public void RegistrationCompleted()
@@ -561,7 +561,7 @@ namespace AgileSB.Bus
 
             _outputTaskScheduler.Dispose();
             _inputTaskScheduler.Dispose();
-            _cronTaskScheduler.Dispose();
+            _deadLetterQueueTaskScheduler.Dispose();
             _responseTaskScheduler.Dispose();
 
             _senderChannel.Dispose();
