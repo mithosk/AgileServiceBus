@@ -15,7 +15,7 @@ namespace AgileSB.Extensions
         {
             JsonSerializerSettings settings = new JsonSerializerSettings();
             settings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-            settings.Converters.Add(new StringEnumConverter() { CamelCaseText = true, AllowIntegerValues = false });
+            settings.Converters.Add(new StringEnumConverter() { NamingStrategy = new CamelCaseNamingStrategy(), AllowIntegerValues = false });
             settings.DateFormatHandling = DateFormatHandling.IsoDateFormat;
             settings.Culture = CultureInfo.InvariantCulture;
             settings.NullValueHandling = NullValueHandling.Ignore;
