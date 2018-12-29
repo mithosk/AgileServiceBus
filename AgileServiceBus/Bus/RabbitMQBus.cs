@@ -30,8 +30,8 @@ namespace AgileSB.Bus
         private const ushort MAX_RETRY_DELAY = 250;
         private const ushort RETRY_LIMIT = 5;
         private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
-        private const byte OUTPUT_NUMBER_OF_THREADS = 4;
-        private const byte INPUT_NUMBER_OF_THREADS = 16;
+        private const byte SEND_NUMBER_OF_THREADS = 4;
+        private const byte RECEIVE_NUMBER_OF_THREADS = 16;
         private const byte DEAD_LETTER_QUEUE_NUMBER_OF_THREADS = 1;
         private const byte RESPONSE_NUMBER_OF_THREADS = 1;
 
@@ -46,8 +46,8 @@ namespace AgileSB.Bus
         private ResponseWaiter _responseWaiter;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
-        private MultiThreadTaskScheduler _outputTaskScheduler;
-        private MultiThreadTaskScheduler _inputTaskScheduler;
+        private MultiThreadTaskScheduler _sendTaskScheduler;
+        private MultiThreadTaskScheduler _receiveTaskScheduler;
         private MultiThreadTaskScheduler _deadLetterQueueTaskScheduler;
         private MultiThreadTaskScheduler _responseTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
@@ -116,8 +116,8 @@ namespace AgileSB.Bus
             _toActivateConsumers = new List<Tuple<IModel, string, EventingBasicConsumer>>();
 
             //custom task schedulers
-            _outputTaskScheduler = new MultiThreadTaskScheduler(OUTPUT_NUMBER_OF_THREADS);
-            _inputTaskScheduler = new MultiThreadTaskScheduler(INPUT_NUMBER_OF_THREADS);
+            _sendTaskScheduler = new MultiThreadTaskScheduler(SEND_NUMBER_OF_THREADS);
+            _receiveTaskScheduler = new MultiThreadTaskScheduler(RECEIVE_NUMBER_OF_THREADS);
             _deadLetterQueueTaskScheduler = new MultiThreadTaskScheduler(DEAD_LETTER_QUEUE_NUMBER_OF_THREADS);
             _responseTaskScheduler = new MultiThreadTaskScheduler(RESPONSE_NUMBER_OF_THREADS);
 
@@ -127,30 +127,25 @@ namespace AgileSB.Bus
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
+            //validation
+            request.Validate();
+
+            //message direction
+            string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = request.GetType().Name.ToLower();
+
             //correlation
             string correlationId = Guid.NewGuid().ToString();
 
-            //response object
-            Response<TResponse> response = null;
-
+            //sending request
             await Task.Factory.StartNew(() =>
             {
-                //validation
-                request.Validate();
-
-                //message direction
-                string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
-                string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
-                string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
-                string routingKey = request.GetType().Name.ToLower();
-
-                //creates exchange
                 _senderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
 
-                //waiter for response
                 _responseWaiter.Register(correlationId);
 
-                //request message
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
                 properties.AppId = _appId;
                 properties.CorrelationId = correlationId;
@@ -163,28 +158,31 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            _outputTaskScheduler);
+            _sendTaskScheduler);
 
+            //response object
+            Response<TResponse> response = null;
+
+            //waiting response
             await Task.Factory.StartNew(() =>
             {
-                //waiting response
                 string message = _responseWaiter.Wait(correlationId);
                 if (message != null)
                     response = message.Deserialize<Response<TResponse>>();
 
                 _responseWaiter.Unregister(correlationId);
-
-                //timeout
-                if (response == null)
-                    throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
-
-                //remote error
-                if (response.ExceptionCode != null)
-                    throw (new RemoteException(response.ExceptionCode, response.ExceptionMessage));
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            _inputTaskScheduler);
+            _receiveTaskScheduler);
+
+            //timeout
+            if (response == null)
+                throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
+
+            //remote error
+            if (response.ExceptionCode != null)
+                throw (new RemoteException(response.ExceptionCode, response.ExceptionMessage));
 
             //response
             return response.Data;
@@ -197,21 +195,20 @@ namespace AgileSB.Bus
 
         public async Task PublishAsync<TMessage>(TMessage message, string topic) where TMessage : class
         {
+            //validation
+            message.Validate();
+
+            //message direction
+            string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
+
+            //message publishing
             await Task.Factory.StartNew(() =>
             {
-                //validation
-                message.Validate();
-
-                //message direction
-                string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-                string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-                string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-                string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
-
-                //creates exchange
                 _senderChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
 
-                //message publishing
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
                 properties.AppId = _appId;
                 properties.MessageId = Guid.NewGuid().ToString();
@@ -223,7 +220,7 @@ namespace AgileSB.Bus
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
-            _outputTaskScheduler);
+            _sendTaskScheduler);
         }
 
         public IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
@@ -558,8 +555,8 @@ namespace AgileSB.Bus
         {
             _cancellationTokenSource.Cancel();
 
-            _outputTaskScheduler.Dispose();
-            _inputTaskScheduler.Dispose();
+            _sendTaskScheduler.Dispose();
+            _receiveTaskScheduler.Dispose();
             _deadLetterQueueTaskScheduler.Dispose();
             _responseTaskScheduler.Dispose();
 
