@@ -8,13 +8,13 @@ namespace AgileServiceBus.Test.Unit
     public class MultiThreadTaskSchedulerTest
     {
         [Fact]
-        public async Task TaskCreation()
+        public async Task TaskExecution()
         {
             MultiThreadTaskScheduler taskScheduler = new MultiThreadTaskScheduler(1);
 
-            int threadId1 = 0;
-            int threadId2 = 0;
-            int threadId3 = 0;
+            int threadId1 = -1;
+            int threadId2 = -1;
+            int threadId3 = -1;
 
             await await Task.Factory.StartNew(async () =>
             {
@@ -37,21 +37,21 @@ namespace AgileServiceBus.Test.Unit
         {
             MultiThreadTaskScheduler taskScheduler = new MultiThreadTaskScheduler(14);
 
-            int threadId = 0;
+            bool afterDelay = false;
 
             await Task.Factory.StartNew(async () =>
             {
                 await Task.Delay(100);
-                threadId = Thread.CurrentThread.ManagedThreadId;
+                afterDelay = true;
             },
             new CancellationToken(),
             TaskCreationOptions.DenyChildAttach,
             taskScheduler);
 
-            await Task.Delay(10);
             taskScheduler.Dispose();
+            await Task.Delay(200);
 
-            Assert.Equal(0, threadId);
+            Assert.False(afterDelay);
         }
     }
 }
