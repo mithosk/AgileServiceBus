@@ -2,8 +2,8 @@
 <package>
   <metadata>
     <id>AgileServiceBus</id>
-    <version>0.12.8</version>
-    <releaseNotes>Bug Fixing</releaseNotes>
+    <version>0.12.30</version>
+    <releaseNotes>High Performance</releaseNotes>
     <title>AgileServiceBus</title>
     <description>.NET Core Microservices Framework</description>
     <tags>Microservices Messaging RabbitMQ</tags>
@@ -15,7 +15,7 @@
     <dependencies>
       <dependency id="Autofac" version="[4.8.1]" />
       <dependency id="ncrontab" version="[3.3.0]" />
-      <dependency id="Newtonsoft.Json" version="[11.0.2]" />
+      <dependency id="Newtonsoft.Json" version="[12.0.1]" />
       <dependency id="RabbitMQ.Client" version="[5.1.0]" />
     </dependencies>
   </metadata>

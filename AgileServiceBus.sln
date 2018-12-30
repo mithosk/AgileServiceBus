@@ -5,7 +5,7 @@ VisualStudioVersion = 15.0.28010.2050
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AgileServiceBus", "AgileServiceBus\AgileServiceBus.csproj", "{6E826767-06AB-4999-A537-17359A0BADAA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgileServiceBus.Test", "AgileServiceBus.Test\AgileServiceBus.Test.csproj", "{54E60976-3762-470F-964A-828C717F23E5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AgileServiceBus.Test", "AgileServiceBus.Test\AgileServiceBus.Test.csproj", "{54E60976-3762-470F-964A-828C717F23E5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
