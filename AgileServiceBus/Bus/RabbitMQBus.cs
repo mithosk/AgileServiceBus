@@ -186,18 +186,18 @@ namespace AgileSB.Bus
             return response.Data;
         }
 
-        public async Task PublishAsync<TMessage>(TMessage message) where TMessage : class
+        public async Task NotifyAsync<TEvent>(TEvent message) where TEvent : class
         {
-            await PublishAsync(message, null);
+            await NotifyAsync(message, null);
         }
 
-        public async Task PublishAsync<TMessage>(TMessage message, string topic) where TMessage : class
+        public async Task NotifyAsync<TEvent>(TEvent message, string tag) where TEvent : class
         {
             //message direction
-            string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
             string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
+            string routingKey = (typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : ""));
 
             //message publishing
             await Task.Factory.StartNew(() =>
@@ -425,7 +425,7 @@ namespace AgileSB.Bus
                     {
                         await CronDelay(cron);
 
-                        await PublishAsync(createMessage());
+                        await NotifyAsync(createMessage());
                     }
                     catch (Exception e)
                     {
