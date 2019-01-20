@@ -8,6 +8,7 @@ using AgileSB.Utilities;
 using AgileServiceBus.Interfaces;
 using AgileServiceBus.Utilities;
 using Autofac;
+using FluentValidation;
 using NCrontab;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -127,9 +128,6 @@ namespace AgileSB.Bus
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            //validation
-            request.Validate();
-
             //message direction
             string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
@@ -195,9 +193,6 @@ namespace AgileSB.Bus
 
         public async Task PublishAsync<TMessage>(TMessage message, string topic) where TMessage : class
         {
-            //validation
-            message.Validate();
-
             //message direction
             string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
@@ -223,7 +218,7 @@ namespace AgileSB.Bus
             _sendTaskScheduler);
         }
 
-        public IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
+        public IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
@@ -258,7 +253,9 @@ namespace AgileSB.Bus
                     await retryHandler.ExecuteAsync(async () =>
                     {
                         TRequest request = message.Deserialize<TRequest>();
-                        request.Validate();
+                        if (validator != null)
+                            await validator.ValidateAndThrowAsync(request);
+
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
@@ -298,7 +295,7 @@ namespace AgileSB.Bus
             return retryHandler;
         }
 
-        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
+        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, AbstractValidator<TMessage> validator, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
@@ -347,7 +344,9 @@ namespace AgileSB.Bus
                     try
                     {
                         TMessage message = Encoding.UTF8.GetString(args.Body).Deserialize<TMessage>();
-                        message.Validate();
+                        if (validator != null)
+                            await validator.ValidateAndThrowAsync(message);
+
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
