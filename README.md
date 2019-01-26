@@ -4,13 +4,8 @@
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyEvent
 {
-    [Required]
-    [MaxLength(10)]
     public string Cat { get; set; }
-
-    [Required]
     public DateTimeOffset? Dog { get; set; }
-
     public Guid? Tiger { get; set; }
 }
 ```
@@ -38,12 +33,8 @@ rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null, null);
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyRequest
 {
-    [Required]
     public int? Lion { get; set; }
-
-    [Required]
     public DateTimeOffset? Crocodile { get; set; }
-
     public Guid? Horse { get; set; }
 }
 ```
