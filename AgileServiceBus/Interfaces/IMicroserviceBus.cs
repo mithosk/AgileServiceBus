@@ -1,6 +1,6 @@
 ﻿using System.Threading.Tasks;
 
-namespace AgileSB.Interfaces
+namespace AgileServiceBus.Interfaces
 {
     public interface IMicroserviceBus
     {
