@@ -27,7 +27,7 @@ public class MyEventSubscriber : IPublishSubscriber<MyEvent>
 ```
 ```csharp
 IRegistrationBus rbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=aaa");
-rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
+rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null, null);
 ```
 
 
@@ -59,7 +59,7 @@ public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 }
 ```
 ```csharp
-rbus.Subscribe<MyRequestSubscriber, MyRequest>();
+rbus.Subscribe<MyRequestSubscriber, MyRequest>(null);
 rbus.RegistrationCompleted();
 ```
 
