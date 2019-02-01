@@ -254,7 +254,7 @@ namespace AgileSB.Bus
                     {
                         TRequest request = message.Deserialize<TRequest>();
                         if (validator != null)
-                            await validator.ValidateAndThrowAsync(request);
+                            await validator.ValidateAndThrowAsync(request, "Invalid " + (directory + "." + subdirectory + "." + request.GetType().Name));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
                         {
@@ -345,7 +345,7 @@ namespace AgileSB.Bus
                     {
                         TMessage message = Encoding.UTF8.GetString(args.Body).Deserialize<TMessage>();
                         if (validator != null)
-                            await validator.ValidateAndThrowAsync(message);
+                            await validator.ValidateAndThrowAsync(message, "Invalid " + (directory + "." + subdirectory + "." + message.GetType().Name));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
                         {
