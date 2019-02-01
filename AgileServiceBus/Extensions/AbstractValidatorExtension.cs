@@ -12,7 +12,7 @@ namespace AgileSB.Extensions
 
             if (!validationResult.IsValid)
             {
-                ValidationException exception = new ValidationException(exceptionMessage);
+                ValidationException exception = new ValidationException(exceptionMessage, validationResult.Errors);
                 foreach (ValidationFailure error in validationResult.Errors)
                     exception.Data.Add(error.PropertyName, error.ErrorCode);
 
