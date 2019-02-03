@@ -2,11 +2,11 @@
 using FluentValidation.Results;
 using System.Threading.Tasks;
 
-namespace AgileSB.Extensions
+namespace AgileServiceBus.Extensions
 {
     public static class AbstractValidatorExtension
     {
-        public static async Task ValidateAndThrowAsync<T>(this AbstractValidator<T> avb, T toValidate, string exceptionMessage)
+        public static async Task ValidateAndThrowAsync<T>(this AbstractValidator<T> avb, T toValidate, string exceptionMessage) where T : class
         {
             ValidationResult validationResult = await avb.ValidateAsync(toValidate);
 
