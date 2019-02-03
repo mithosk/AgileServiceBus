@@ -43,7 +43,7 @@ public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 {
     public IMicroserviceBus Bus { get; set; }
 
-    public async Task<object> ResponseAsync(MyRequest request)
+    public async Task<object> ResponseAsync(MyRequest message)
     {
 
     }
