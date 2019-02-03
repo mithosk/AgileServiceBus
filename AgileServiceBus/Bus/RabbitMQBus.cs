@@ -5,6 +5,7 @@ using AgileSB.Extensions;
 using AgileSB.Interfaces;
 using AgileSB.Log;
 using AgileSB.Utilities;
+using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
 using AgileServiceBus.Utilities;
 using Autofac;
