@@ -5,9 +5,11 @@ using AgileSB.Extensions;
 using AgileSB.Interfaces;
 using AgileSB.Log;
 using AgileSB.Utilities;
+using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
 using AgileServiceBus.Utilities;
 using Autofac;
+using FluentValidation;
 using NCrontab;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -127,9 +129,6 @@ namespace AgileSB.Bus
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            //validation
-            request.Validate();
-
             //message direction
             string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
@@ -188,21 +187,18 @@ namespace AgileSB.Bus
             return response.Data;
         }
 
-        public async Task PublishAsync<TMessage>(TMessage message) where TMessage : class
+        public async Task NotifyAsync<TEvent>(TEvent message) where TEvent : class
         {
-            await PublishAsync(message, null);
+            await NotifyAsync(message, null);
         }
 
-        public async Task PublishAsync<TMessage>(TMessage message, string topic) where TMessage : class
+        public async Task NotifyAsync<TEvent>(TEvent message, string tag) where TEvent : class
         {
-            //validation
-            message.Validate();
-
             //message direction
-            string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
             string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : ""));
+            string routingKey = (typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : ""));
 
             //message publishing
             await Task.Factory.StartNew(() =>
@@ -223,7 +219,7 @@ namespace AgileSB.Bus
             _sendTaskScheduler);
         }
 
-        public IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
+        public IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
@@ -258,7 +254,9 @@ namespace AgileSB.Bus
                     await retryHandler.ExecuteAsync(async () =>
                     {
                         TRequest request = message.Deserialize<TRequest>();
-                        request.Validate();
+                        if (validator != null)
+                            await validator.ValidateAndThrowAsync(request, (directory + "." + subdirectory + "." + request.GetType().Name + " is not valid"));
+
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
@@ -298,7 +296,7 @@ namespace AgileSB.Bus
             return retryHandler;
         }
 
-        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
+        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, AbstractValidator<TMessage> validator, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
@@ -347,7 +345,9 @@ namespace AgileSB.Bus
                     try
                     {
                         TMessage message = Encoding.UTF8.GetString(args.Body).Deserialize<TMessage>();
-                        message.Validate();
+                        if (validator != null)
+                            await validator.ValidateAndThrowAsync(message, (directory + "." + subdirectory + "." + message.GetType().Name + " is not valid"));
+
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
@@ -426,7 +426,7 @@ namespace AgileSB.Bus
                     {
                         await CronDelay(cron);
 
-                        await PublishAsync(createMessage());
+                        await NotifyAsync(createMessage());
                     }
                     catch (Exception e)
                     {

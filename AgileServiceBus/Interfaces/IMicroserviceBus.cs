@@ -1,10 +1,10 @@
 ﻿using System.Threading.Tasks;
 
-namespace AgileSB.Interfaces
+namespace AgileServiceBus.Interfaces
 {
     public interface IMicroserviceBus
     {
-        Task PublishAsync<TMessage>(TMessage message) where TMessage : class;
-        Task PublishAsync<TMessage>(TMessage message, string topic) where TMessage : class;
+        Task NotifyAsync<TEvent>(TEvent message) where TEvent : class;
+        Task NotifyAsync<TEvent>(TEvent message, string tag) where TEvent : class;
     }
 }

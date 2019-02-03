@@ -1,5 +1,6 @@
 ﻿using AgileServiceBus.Interfaces;
 using Autofac;
+using FluentValidation;
 using System;
 
 namespace AgileSB.Interfaces
@@ -9,8 +10,8 @@ namespace AgileSB.Interfaces
         ILogger Logger { set; }
         ContainerBuilder Container { get; }
 
-        IIncludeForRetry Subscribe<TSubscriber, TRequest>() where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class;
-        IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class;
+        IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class;
+        IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, AbstractValidator<TMessage> validator, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class;
         void RegistrationCompleted();
     }
 }

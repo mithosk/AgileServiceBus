@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using AgileServiceBus.Interfaces;
+using System.Threading.Tasks;
 
 namespace AgileSB.Interfaces
 {

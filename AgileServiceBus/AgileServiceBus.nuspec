@@ -2,8 +2,8 @@
 <package>
   <metadata>
     <id>AgileServiceBus</id>
-    <version>0.12.30</version>
-    <releaseNotes>High Performance</releaseNotes>
+    <version>1.2.4</version>
+    <releaseNotes>Fluent Validation</releaseNotes>
     <title>AgileServiceBus</title>
     <description>.NET Core Microservices Framework</description>
     <tags>Microservices Messaging RabbitMQ</tags>
@@ -11,12 +11,14 @@
     <owners>Luca Nicolini</owners>
     <projectUrl>https://github.com/mithosk/AgileServiceBus</projectUrl>
     <iconUrl>https://raw.githubusercontent.com/mithosk/AgileServiceBus/master/Icon.png</iconUrl>
+    <license type="expression">Apache-2.0</license>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <dependencies>
-      <dependency id="Autofac" version="[4.8.1]" />
-      <dependency id="ncrontab" version="[3.3.0]" />
-      <dependency id="Newtonsoft.Json" version="[12.0.1]" />
-      <dependency id="RabbitMQ.Client" version="[5.1.0]" />
+      <dependency id="Autofac" version="4.8.1" />
+      <dependency id="FluentValidation" version="8.1.3" />
+      <dependency id="ncrontab" version="3.3.0" />
+      <dependency id="Newtonsoft.Json" version="12.0.1" />
+      <dependency id="RabbitMQ.Client" version="5.1.0" />
     </dependencies>
   </metadata>
   <files>

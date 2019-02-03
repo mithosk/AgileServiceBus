@@ -4,13 +4,8 @@
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyEvent
 {
-    [Required]
-    [MaxLength(10)]
     public string Cat { get; set; }
-
-    [Required]
     public DateTimeOffset? Dog { get; set; }
-
     public Guid? Tiger { get; set; }
 }
 ```
@@ -27,7 +22,7 @@ public class MyEventSubscriber : IPublishSubscriber<MyEvent>
 ```
 ```csharp
 IRegistrationBus rbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=aaa");
-rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
+rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null, null);
 ```
 
 
@@ -38,12 +33,8 @@ rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null);
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyRequest
 {
-    [Required]
     public int? Lion { get; set; }
-
-    [Required]
     public DateTimeOffset? Crocodile { get; set; }
-
     public Guid? Horse { get; set; }
 }
 ```
@@ -52,14 +43,14 @@ public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 {
     public IMicroserviceBus Bus { get; set; }
 
-    public async Task<object> ResponseAsync(MyRequest request)
+    public async Task<object> ResponseAsync(MyRequest message)
     {
 
     }
 }
 ```
 ```csharp
-rbus.Subscribe<MyRequestSubscriber, MyRequest>();
+rbus.Subscribe<MyRequestSubscriber, MyRequest>(null);
 rbus.RegistrationCompleted();
 ```
 
