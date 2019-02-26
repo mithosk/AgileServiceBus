@@ -5,8 +5,8 @@
 public class MyEvent
 {
     public string Cat { get; set; }
-    public DateTimeOffset? Dog { get; set; }
-    public Guid? Tiger { get; set; }
+    public DateTime Dog { get; set; }
+    public Guid Tiger { get; set; }
 }
 ```
 ```csharp
@@ -33,9 +33,9 @@ rbus.Subscribe<MyEventSubscriber, MyEvent>(null, 1, null, null, null);
 [QueueConfig(Directory = "John", Subdirectory = "Doe")]
 public class MyRequest
 {
-    public int? Lion { get; set; }
-    public DateTimeOffset? Crocodile { get; set; }
-    public Guid? Horse { get; set; }
+    public int Lion { get; set; }
+    public DateTime Crocodile { get; set; }
+    public Guid Horse { get; set; }
 }
 ```
 ```csharp
@@ -65,7 +65,7 @@ IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=
 MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest() 
 { 
     Lion = 5, 
-    Crocodile = DateTimeOffset.Now 
+    Crocodile = DateTime.UtcNow 
 });
 ```
 
