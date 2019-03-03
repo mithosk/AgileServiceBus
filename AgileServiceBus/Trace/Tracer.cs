@@ -13,8 +13,7 @@ namespace AgileServiceBus.Trace
         private MultiThreadTaskScheduler _taskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
 
-        protected abstract Task TraceAsync(TraceSpan span);
-        protected abstract Task ErrorAsync(Exception exception);
+        public abstract Task TraceAsync(TraceSpan span);
 
         public Tracer()
         {
@@ -35,10 +34,7 @@ namespace AgileServiceBus.Trace
                 {
                     await TraceAsync(span);
                 }
-                catch (Exception exception)
-                {
-                    await ErrorAsync(exception);
-                }
+                catch { }
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
