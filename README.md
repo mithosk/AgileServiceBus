@@ -13,6 +13,7 @@ public class MyEvent
 public class MyEventSubscriber : IPublishSubscriber<MyEvent>
 {
     public IMicroserviceBus Bus { get; set; }
+    public ITraceScope TraceScope { get; set; }
 
     public async Task ConsumeAsync(MyEvent message)
     {
@@ -42,6 +43,7 @@ public class MyRequest
 public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
 {
     public IMicroserviceBus Bus { get; set; }
+    public ITraceScope TraceScope { get; set; }
 
     public async Task<object> ResponseAsync(MyRequest message)
     {
