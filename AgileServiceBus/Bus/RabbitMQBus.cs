@@ -7,6 +7,7 @@ using AgileSB.Log;
 using AgileSB.Utilities;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
+using AgileServiceBus.Trace;
 using AgileServiceBus.Utilities;
 using Autofac;
 using FluentValidation;
@@ -53,6 +54,8 @@ namespace AgileSB.Bus
         private MultiThreadTaskScheduler _deadLetterQueueTaskScheduler;
         private MultiThreadTaskScheduler _responseTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
+        private Type _tracerType;
+        private Tracer _tracer;
 
         public ILogger Logger { get; set; }
         public ContainerBuilder Container { get; }
@@ -125,6 +128,14 @@ namespace AgileSB.Bus
 
             //cancellation token
             _cancellationTokenSource = new CancellationTokenSource();
+
+            //default tracer
+            _tracerType = typeof(DefaultTracer);
+        }
+
+        public void RegisterTracer<TTracer>() where TTracer : Tracer
+        {
+            _tracerType = typeof(TTracer);
         }
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
@@ -442,6 +453,9 @@ namespace AgileSB.Bus
         public void RegistrationCompleted()
         {
             _container = Container.Build();
+
+            _tracer = (Tracer)Activator.CreateInstance(_tracerType);
+
             foreach (Tuple<IModel, string, EventingBasicConsumer> toActivateConsumer in _toActivateConsumers)
                 toActivateConsumer.Item1.BasicConsume(toActivateConsumer.Item2, false, toActivateConsumer.Item3);
         }
@@ -568,6 +582,8 @@ namespace AgileSB.Bus
                 entry.Value.Dispose();
 
             _connection.Dispose();
+
+            _tracer.Dispose();
         }
     }
 }
