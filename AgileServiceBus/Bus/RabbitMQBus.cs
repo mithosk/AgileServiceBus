@@ -171,8 +171,8 @@ namespace AgileSB.Bus
                 _senderChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
 
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
+                properties.MessageId = Guid.NewGuid().Serialize();
                 properties.AppId = _appId;
-                properties.MessageId = Guid.NewGuid().ToString();
                 properties.Headers = new Dictionary<string, object>();
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Headers.Add("RetryIndex", 0.Serialize());
@@ -247,6 +247,7 @@ namespace AgileSB.Bus
                     {
                         message = response.Serialize();
                         IBasicProperties properties = _senderChannel.CreateBasicProperties();
+                        properties.MessageId = Guid.NewGuid().Serialize();
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
                         _senderChannel.BasicPublish(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToExchange"]), Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToRoutingKey"]), properties, Encoding.UTF8.GetBytes(message));
@@ -338,8 +339,8 @@ namespace AgileSB.Bus
                         if (retryHandler.IsForRetry(exception) && !String.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
                         {
                             IBasicProperties properties = _deadLetterQueueChannel.CreateBasicProperties();
+                            properties.MessageId = args.BasicProperties.MessageId;
                             properties.AppId = _appId;
-                            properties.MessageId = Guid.NewGuid().ToString();
                             properties.Headers = new Dictionary<string, object>();
                             properties.Headers.Add("SendDate", DateTime.UtcNow.Serialize());
                             properties.Headers.Add("RetryIndex", (++retryIndex).Serialize());
@@ -441,6 +442,7 @@ namespace AgileSB.Bus
                 _responseWaiter.Register(correlationId);
 
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
+                properties.MessageId = Guid.NewGuid().Serialize();
                 properties.AppId = _appId;
                 properties.CorrelationId = correlationId;
                 properties.Headers = new Dictionary<string, object>();
