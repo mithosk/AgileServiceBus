@@ -460,6 +460,67 @@ namespace AgileSB.Bus
                 toActivateConsumer.Item1.BasicConsume(toActivateConsumer.Item2, false, toActivateConsumer.Item3);
         }
 
+        private async Task<TResponse> RequestAsync<TResponse>(object request, Guid? spanId)
+        {
+            //message direction
+            string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = request.GetType().Name.ToLower();
+
+            //correlation
+            string correlationId = Guid.NewGuid().ToString();
+
+            //sending request
+            await Task.Factory.StartNew(() =>
+            {
+                _senderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
+
+                _responseWaiter.Register(correlationId);
+
+                IBasicProperties properties = _senderChannel.CreateBasicProperties();
+                properties.AppId = _appId;
+                properties.CorrelationId = correlationId;
+                properties.Headers = new Dictionary<string, object>();
+                properties.Headers.Add("ReplyToExchange", (_appId.ToLower() + "_response"));
+                properties.Headers.Add("ReplyToRoutingKey", _responseRoutingKey);
+                properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
+                properties.Headers.Add("SpanId", spanId.Serialize());
+                properties.Persistent = false;
+                _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            _sendTaskScheduler);
+
+            //response object
+            Response<TResponse> response = null;
+
+            //waiting response
+            await Task.Factory.StartNew(() =>
+            {
+                string message = _responseWaiter.Wait(correlationId);
+                if (message != null)
+                    response = message.Deserialize<Response<TResponse>>();
+
+                _responseWaiter.Unregister(correlationId);
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            _receiveTaskScheduler);
+
+            //timeout
+            if (response == null)
+                throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
+
+            //remote error
+            if (response.ExceptionCode != null)
+                throw (new RemoteException(response.ExceptionCode, response.ExceptionMessage));
+
+            //response
+            return response.Data;
+        }
+
         private async Task LogOnConsumed(string queueName, BasicDeliverEventArgs args)
         {
             if (Logger != null)
