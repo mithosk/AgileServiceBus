@@ -140,7 +140,7 @@ namespace AgileSB.Bus
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            return await RequestAsync<TResponse>(request, (Guid?)null);
+            return await RequestAsync<TResponse>(request, null, null);
         }
 
         public async Task<TResponse> RequestAsync<TResponse>(object request, ITraceScope traceScope)
@@ -149,7 +149,7 @@ namespace AgileSB.Bus
             string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
 
             using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + request.GetType().Name))
-                return await RequestAsync<TResponse>(request, traceSubScope.SpanId);
+                return await RequestAsync<TResponse>(request, traceSubScope.SpanId, traceSubScope.TraceId);
         }
 
         public async Task NotifyAsync<TEvent>(TEvent message) where TEvent : class
@@ -214,7 +214,8 @@ namespace AgileSB.Bus
                     string message = Encoding.UTF8.GetString(args.Body);
 
                     //tracing data
-                    Guid? traceSpanId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"])).Deserialize<Guid?>();
+                    string traceSpanId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"])).Deserialize<string>();
+                    string traceId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"])).Deserialize<string>();
                     string traceDisplayName = "Response-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
 
                     //response action
@@ -227,7 +228,7 @@ namespace AgileSB.Bus
                             await validator.ValidateAndThrowAsync(request, (directory + "." + subdirectory + "." + request.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
-                        using (ITraceScope traceScope = (traceSpanId != null ? new TraceScope(traceSpanId.Value, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer)))
+                        using (ITraceScope traceScope = ((traceSpanId != null && traceId != null) ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer)))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
@@ -425,7 +426,7 @@ namespace AgileSB.Bus
                 toActivateConsumer.Item1.BasicConsume(toActivateConsumer.Item2, false, toActivateConsumer.Item3);
         }
 
-        private async Task<TResponse> RequestAsync<TResponse>(object request, Guid? traceSpanId)
+        private async Task<TResponse> RequestAsync<TResponse>(object request, string traceSpanId, string traceId)
         {
             //message direction
             string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
@@ -452,6 +453,7 @@ namespace AgileSB.Bus
                 properties.Headers.Add("ReplyToRoutingKey", _responseRoutingKey);
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Headers.Add("TraceSpanId", traceSpanId.Serialize());
+                properties.Headers.Add("TraceId", traceId.Serialize());
                 properties.Persistent = false;
                 _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
             },
