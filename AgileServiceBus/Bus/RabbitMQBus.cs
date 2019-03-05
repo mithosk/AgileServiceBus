@@ -140,7 +140,16 @@ namespace AgileSB.Bus
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            return await RequestAsync<TResponse>(request, null);
+            return await RequestAsync<TResponse>(request, (Guid?)null);
+        }
+
+        public async Task<TResponse> RequestAsync<TResponse>(object request, ITraceScope traceScope)
+        {
+            string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+
+            using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + request.GetType().Name))
+                return await RequestAsync<TResponse>(request, traceSubScope.SpanId);
         }
 
         public async Task NotifyAsync<TEvent>(TEvent message) where TEvent : class
