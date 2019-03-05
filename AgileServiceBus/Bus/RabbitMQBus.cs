@@ -232,6 +232,7 @@ namespace AgileSB.Bus
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
+                            traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
                             response.Data = await subscriber.ResponseAsync(request);
                         }
                     },
@@ -326,6 +327,7 @@ namespace AgileSB.Bus
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
+                            traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
                             await subscriber.ConsumeAsync(message);
                         }
 
