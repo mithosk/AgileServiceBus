@@ -320,9 +320,11 @@ namespace AgileSB.Bus
                             await validator.ValidateAndThrowAsync(message, (directory + "." + subdirectory + "." + message.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
+                        using (ITraceScope traceScope = new TraceScope("Handle-" + directory + "." + subdirectory + "." + typeof(TMessage).Name, _tracer))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
+                            subscriber.TraceScope = traceScope;
                             await subscriber.ConsumeAsync(message);
                         }
 
