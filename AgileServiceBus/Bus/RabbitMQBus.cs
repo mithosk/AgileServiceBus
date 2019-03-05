@@ -213,6 +213,10 @@ namespace AgileSB.Bus
                     //request message
                     string message = Encoding.UTF8.GetString(args.Body);
 
+                    //tracing data
+                    Guid? traceSpanId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"])).Deserialize<Guid?>();
+                    string traceDisplayName = "Response-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
+
                     //response action
                     Response<object> response = new Response<object>();
 
@@ -223,9 +227,11 @@ namespace AgileSB.Bus
                             await validator.ValidateAndThrowAsync(request, (directory + "." + subdirectory + "." + request.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
+                        using (ITraceScope traceScope = (traceSpanId != null ? new TraceScope(traceSpanId.Value, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer)))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
+                            subscriber.TraceScope = traceScope;
                             response.Data = await subscriber.ResponseAsync(request);
                         }
                     },
@@ -414,7 +420,7 @@ namespace AgileSB.Bus
                 toActivateConsumer.Item1.BasicConsume(toActivateConsumer.Item2, false, toActivateConsumer.Item3);
         }
 
-        private async Task<TResponse> RequestAsync<TResponse>(object request, Guid? spanId)
+        private async Task<TResponse> RequestAsync<TResponse>(object request, Guid? traceSpanId)
         {
             //message direction
             string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
@@ -439,7 +445,7 @@ namespace AgileSB.Bus
                 properties.Headers.Add("ReplyToExchange", (_appId.ToLower() + "_response"));
                 properties.Headers.Add("ReplyToRoutingKey", _responseRoutingKey);
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
-                properties.Headers.Add("SpanId", spanId.Serialize());
+                properties.Headers.Add("TraceSpanId", traceSpanId.Serialize());
                 properties.Persistent = false;
                 _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
             },
