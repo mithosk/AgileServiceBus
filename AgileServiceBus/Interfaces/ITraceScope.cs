@@ -5,7 +5,8 @@ namespace AgileServiceBus.Interfaces
 {
     public interface ITraceScope : IDisposable
     {
-        Guid SpanId { get; }
+        string SpanId { get; }
+        string TraceId { get; }
         Dictionary<string, string> Attributes { get; }
 
         ITraceScope CreateSubScope(string displayName);
