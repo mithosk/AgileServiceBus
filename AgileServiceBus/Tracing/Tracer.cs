@@ -4,7 +4,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AgileServiceBus.Trace
+namespace AgileServiceBus.Tracing
 {
     public abstract class Tracer : IDisposable
     {
@@ -13,7 +13,9 @@ namespace AgileServiceBus.Trace
         private MultiThreadTaskScheduler _taskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
 
-        public abstract Task TraceAsync(TraceSpan span);
+        public abstract string CreateTraceId();
+        public abstract string CreateSpanId();
+        public abstract Task SendAsync(TraceSpan traceSpan);
 
         public Tracer()
         {
@@ -26,13 +28,13 @@ namespace AgileServiceBus.Trace
             return new TraceScope(displayName, this);
         }
 
-        internal void Trace(TraceSpan span)
+        internal void Send(TraceSpan traceSpan)
         {
             Task.Factory.StartNew(async () =>
             {
                 try
                 {
-                    await TraceAsync(span);
+                    await SendAsync(traceSpan);
                 }
                 catch { }
             },
