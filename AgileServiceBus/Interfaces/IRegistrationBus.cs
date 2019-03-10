@@ -1,5 +1,5 @@
 ﻿using AgileServiceBus.Interfaces;
-using AgileServiceBus.Trace;
+using AgileServiceBus.Tracing;
 using Autofac;
 using FluentValidation;
 using System;

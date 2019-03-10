@@ -7,7 +7,7 @@ using AgileSB.Log;
 using AgileSB.Utilities;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
-using AgileServiceBus.Trace;
+using AgileServiceBus.Tracing;
 using AgileServiceBus.Utilities;
 using Autofac;
 using FluentValidation;
