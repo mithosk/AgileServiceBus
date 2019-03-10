@@ -21,7 +21,7 @@ namespace AgileServiceBus.Tracing
             string time = ((int)((traceSpan.EndTime - traceSpan.StartTime).TotalMilliseconds + 0.5)).ToString();
             string displayName = traceSpan.DisplayName;
 
-            await Console.Out.WriteLineAsync("Trace:    " + deep.PadLeft(5, ' ') + " [" + time.PadLeft(5, ' ') + "]  " + displayName);
+            await Console.Out.WriteLineAsync("Tracer:    " + deep.PadLeft(5, ' ') + " [" + time.PadLeft(5, ' ') + "]  " + displayName);
         }
     }
 }
