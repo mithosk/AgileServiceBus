@@ -67,7 +67,8 @@ IGatewayBus gbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=
 MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest() 
 { 
     Lion = 5, 
-    Crocodile = DateTime.UtcNow 
+    Crocodile = DateTime.UtcNow,
+    Horse = Guid.NewGuid()
 });
 ```
 
