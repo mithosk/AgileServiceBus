@@ -171,7 +171,7 @@ namespace AgileSB.Bus
                 _senderChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
 
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
-                properties.MessageId = Guid.NewGuid().Serialize();
+                properties.MessageId = Guid.NewGuid().ToString();
                 properties.AppId = _appId;
                 properties.Headers = new Dictionary<string, object>();
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
@@ -249,7 +249,7 @@ namespace AgileSB.Bus
                     {
                         message = response.Serialize();
                         IBasicProperties properties = _senderChannel.CreateBasicProperties();
-                        properties.MessageId = Guid.NewGuid().Serialize();
+                        properties.MessageId = Guid.NewGuid().ToString();
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
                         _senderChannel.BasicPublish(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToExchange"]), Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToRoutingKey"]), properties, Encoding.UTF8.GetBytes(message));
@@ -445,7 +445,7 @@ namespace AgileSB.Bus
                 _responseWaiter.Register(correlationId);
 
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
-                properties.MessageId = Guid.NewGuid().Serialize();
+                properties.MessageId = Guid.NewGuid().ToString();
                 properties.AppId = _appId;
                 properties.CorrelationId = correlationId;
                 properties.Headers = new Dictionary<string, object>();
