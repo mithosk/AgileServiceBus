@@ -13,8 +13,7 @@ namespace AgileServiceBus.Extensions
             if (!validationResult.IsValid)
             {
                 ValidationException exception = new ValidationException(exceptionMessage, validationResult.Errors);
-                foreach (ValidationFailure error in validationResult.Errors)
-                    exception.Data.Add(error.PropertyName, error.ErrorCode);
+                exception.Data.Add("Detail", validationResult.ToString());
 
                 throw exception;
             }
