@@ -1,12 +1,11 @@
-﻿using AgileServiceBus.Interfaces;
-using System;
+﻿using System;
 using System.Threading.Tasks;
 
-namespace AgileSB.Interfaces
+namespace AgileServiceBus.Interfaces
 {
     public interface IGatewayBus : IDisposable
     {
-        Task<TResponse> RequestAsync<TResponse>(object request);
-        Task<TResponse> RequestAsync<TResponse>(object request, ITraceScope traceScope);
+        Task<TResponse> RequestAsync<TResponse>(object message);
+        Task<TResponse> RequestAsync<TResponse>(object message, ITraceScope traceScope);
     }
 }
