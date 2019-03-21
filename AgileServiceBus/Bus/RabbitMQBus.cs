@@ -623,7 +623,8 @@ namespace AgileSB.Bus
 
             _connection.Dispose();
 
-            _tracer.Dispose();
+            if (_tracer != null)
+                _tracer.Dispose();
         }
     }
 }
