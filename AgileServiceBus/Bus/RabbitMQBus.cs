@@ -67,6 +67,7 @@ namespace AgileSB.Bus
             //creates the connection
             ConnectionFactory connectionFactory = new ConnectionFactory();
             connectionFactory.HostName = settings["HostName"];
+            connectionFactory.VirtualHost = "/";
             connectionFactory.Port = Int32.Parse(settings["Port"]);
             connectionFactory.UserName = settings["UserName"];
             connectionFactory.Password = settings["Password"];
