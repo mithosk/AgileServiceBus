@@ -61,7 +61,9 @@ namespace AgileServiceBus.Utilities
 
         public async Task ExecuteAsync(Func<Task> toRetry, Func<Exception, ushort, ushort, Task> error)
         {
-            for (ushort i = 0; i <= _retryLimit; i++)
+            ushort retryIndex = 0;
+
+            while (true)
             {
                 try
                 {
@@ -73,11 +75,15 @@ namespace AgileServiceBus.Utilities
                 {
                     bool isForRetry = IsForRetry(exception);
 
-                    await error(exception, i, (isForRetry ? _retryLimit : i));
+                    await error(exception, retryIndex, (isForRetry ? _retryLimit : retryIndex));
 
                     if (!isForRetry)
                         break;
                 }
+
+                retryIndex++;
+                if (retryIndex > _retryLimit)
+                    break;
 
                 await Task.Delay(_random.Next(_minDelay, _maxDelay));
             }

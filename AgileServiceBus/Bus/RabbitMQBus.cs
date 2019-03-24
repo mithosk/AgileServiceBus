@@ -7,6 +7,7 @@ using AgileSB.Log;
 using AgileSB.Utilities;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
+using AgileServiceBus.Tracing;
 using AgileServiceBus.Utilities;
 using Autofac;
 using FluentValidation;
@@ -53,6 +54,8 @@ namespace AgileSB.Bus
         private MultiThreadTaskScheduler _deadLetterQueueTaskScheduler;
         private MultiThreadTaskScheduler _responseTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
+        private Type _tracerType;
+        private Tracer _tracer;
 
         public ILogger Logger { get; set; }
         public ContainerBuilder Container { get; }
@@ -64,6 +67,7 @@ namespace AgileSB.Bus
             //creates the connection
             ConnectionFactory connectionFactory = new ConnectionFactory();
             connectionFactory.HostName = settings["HostName"];
+            connectionFactory.VirtualHost = "/";
             connectionFactory.Port = Int32.Parse(settings["Port"]);
             connectionFactory.UserName = settings["UserName"];
             connectionFactory.Password = settings["Password"];
@@ -125,66 +129,38 @@ namespace AgileSB.Bus
 
             //cancellation token
             _cancellationTokenSource = new CancellationTokenSource();
+
+            //default tracer
+            _tracerType = typeof(DefaultTracer);
+        }
+
+        public void RegisterTracer<TTracer>() where TTracer : Tracer
+        {
+            _tracerType = typeof(TTracer);
         }
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            //message direction
+            return await RequestAsync<TResponse>(request, null, null);
+        }
+
+        public async Task RequestAsync(object message)
+        {
+            await RequestAsync<object>(message);
+        }
+
+        public async Task<TResponse> RequestAsync<TResponse>(object request, ITraceScope traceScope)
+        {
             string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = request.GetType().Name.ToLower();
 
-            //correlation
-            string correlationId = Guid.NewGuid().ToString();
+            using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + request.GetType().Name))
+                return await RequestAsync<TResponse>(request, traceSubScope.SpanId, traceSubScope.TraceId);
+        }
 
-            //sending request
-            await Task.Factory.StartNew(() =>
-            {
-                _senderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
-
-                _responseWaiter.Register(correlationId);
-
-                IBasicProperties properties = _senderChannel.CreateBasicProperties();
-                properties.AppId = _appId;
-                properties.CorrelationId = correlationId;
-                properties.Headers = new Dictionary<string, object>();
-                properties.Headers.Add("ReplyToExchange", (_appId.ToLower() + "_response"));
-                properties.Headers.Add("ReplyToRoutingKey", _responseRoutingKey);
-                properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
-                properties.Persistent = false;
-                _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
-            },
-            _cancellationTokenSource.Token,
-            TaskCreationOptions.DenyChildAttach,
-            _sendTaskScheduler);
-
-            //response object
-            Response<TResponse> response = null;
-
-            //waiting response
-            await Task.Factory.StartNew(() =>
-            {
-                string message = _responseWaiter.Wait(correlationId);
-                if (message != null)
-                    response = message.Deserialize<Response<TResponse>>();
-
-                _responseWaiter.Unregister(correlationId);
-            },
-            _cancellationTokenSource.Token,
-            TaskCreationOptions.DenyChildAttach,
-            _receiveTaskScheduler);
-
-            //timeout
-            if (response == null)
-                throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
-
-            //remote error
-            if (response.ExceptionCode != null)
-                throw (new RemoteException(response.ExceptionCode, response.ExceptionMessage));
-
-            //response
-            return response.Data;
+        public async Task RequestAsync(object message, ITraceScope traceScope)
+        {
+            await RequestAsync<object>(message, traceScope);
         }
 
         public async Task NotifyAsync<TEvent>(TEvent message) where TEvent : class
@@ -206,8 +182,8 @@ namespace AgileSB.Bus
                 _senderChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
 
                 IBasicProperties properties = _senderChannel.CreateBasicProperties();
-                properties.AppId = _appId;
                 properties.MessageId = Guid.NewGuid().ToString();
+                properties.AppId = _appId;
                 properties.Headers = new Dictionary<string, object>();
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
                 properties.Headers.Add("RetryIndex", 0.Serialize());
@@ -248,6 +224,11 @@ namespace AgileSB.Bus
                     //request message
                     string message = Encoding.UTF8.GetString(args.Body);
 
+                    //tracing data
+                    string traceSpanId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"])).Deserialize<string>();
+                    string traceId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"])).Deserialize<string>();
+                    string traceDisplayName = "Response-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
+
                     //response action
                     Response<object> response = new Response<object>();
 
@@ -258,9 +239,12 @@ namespace AgileSB.Bus
                             await validator.ValidateAndThrowAsync(request, (directory + "." + subdirectory + "." + request.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
+                        using (ITraceScope traceScope = ((traceSpanId != null && traceId != null) ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer)))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
+                            subscriber.TraceScope = traceScope;
+                            traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
                             response.Data = await subscriber.ResponseAsync(request);
                         }
                     },
@@ -276,6 +260,7 @@ namespace AgileSB.Bus
                     {
                         message = response.Serialize();
                         IBasicProperties properties = _senderChannel.CreateBasicProperties();
+                        properties.MessageId = Guid.NewGuid().ToString();
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
                         _senderChannel.BasicPublish(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToExchange"]), Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["ReplyToRoutingKey"]), properties, Encoding.UTF8.GetBytes(message));
@@ -349,9 +334,12 @@ namespace AgileSB.Bus
                             await validator.ValidateAndThrowAsync(message, (directory + "." + subdirectory + "." + message.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
+                        using (ITraceScope traceScope = new TraceScope("Handle-" + directory + "." + subdirectory + "." + typeof(TMessage).Name, _tracer))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
+                            subscriber.TraceScope = traceScope;
+                            traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
                             await subscriber.ConsumeAsync(message);
                         }
 
@@ -365,8 +353,8 @@ namespace AgileSB.Bus
                         if (retryHandler.IsForRetry(exception) && !String.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
                         {
                             IBasicProperties properties = _deadLetterQueueChannel.CreateBasicProperties();
+                            properties.MessageId = args.BasicProperties.MessageId;
                             properties.AppId = _appId;
-                            properties.MessageId = Guid.NewGuid().ToString();
                             properties.Headers = new Dictionary<string, object>();
                             properties.Headers.Add("SendDate", DateTime.UtcNow.Serialize());
                             properties.Headers.Add("RetryIndex", (++retryIndex).Serialize());
@@ -442,8 +430,74 @@ namespace AgileSB.Bus
         public void RegistrationCompleted()
         {
             _container = Container.Build();
+
+            _tracer = (Tracer)Activator.CreateInstance(_tracerType);
+
             foreach (Tuple<IModel, string, EventingBasicConsumer> toActivateConsumer in _toActivateConsumers)
                 toActivateConsumer.Item1.BasicConsume(toActivateConsumer.Item2, false, toActivateConsumer.Item3);
+        }
+
+        private async Task<TResponse> RequestAsync<TResponse>(object request, string traceSpanId, string traceId)
+        {
+            //message direction
+            string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string routingKey = request.GetType().Name.ToLower();
+
+            //correlation
+            string correlationId = Guid.NewGuid().ToString();
+
+            //sending request
+            await Task.Factory.StartNew(() =>
+            {
+                _senderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
+
+                _responseWaiter.Register(correlationId);
+
+                IBasicProperties properties = _senderChannel.CreateBasicProperties();
+                properties.MessageId = Guid.NewGuid().ToString();
+                properties.AppId = _appId;
+                properties.CorrelationId = correlationId;
+                properties.Headers = new Dictionary<string, object>();
+                properties.Headers.Add("ReplyToExchange", (_appId.ToLower() + "_response"));
+                properties.Headers.Add("ReplyToRoutingKey", _responseRoutingKey);
+                properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
+                properties.Headers.Add("TraceSpanId", traceSpanId.Serialize());
+                properties.Headers.Add("TraceId", traceId.Serialize());
+                properties.Persistent = false;
+                _senderChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            _sendTaskScheduler);
+
+            //response object
+            Response<TResponse> response = null;
+
+            //waiting response
+            await Task.Factory.StartNew(() =>
+            {
+                string message = _responseWaiter.Wait(correlationId);
+                if (message != null)
+                    response = message.Deserialize<Response<TResponse>>();
+
+                _responseWaiter.Unregister(correlationId);
+            },
+            _cancellationTokenSource.Token,
+            TaskCreationOptions.DenyChildAttach,
+            _receiveTaskScheduler);
+
+            //timeout
+            if (response == null)
+                throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
+
+            //remote error
+            if (response.ExceptionCode != null)
+                throw (new RemoteException(response.ExceptionCode, response.ExceptionMessage));
+
+            //response
+            return response.Data;
         }
 
         private async Task LogOnConsumed(string queueName, BasicDeliverEventArgs args)
@@ -568,6 +622,9 @@ namespace AgileSB.Bus
                 entry.Value.Dispose();
 
             _connection.Dispose();
+
+            if (_tracer != null)
+                _tracer.Dispose();
         }
     }
 }
