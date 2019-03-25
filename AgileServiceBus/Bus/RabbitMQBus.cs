@@ -316,7 +316,7 @@ namespace AgileSB.Bus
             //creates dead letter queue
             string deadLetterQueue = (queue + "-dlq");
             _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
-            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : "") + ".dlq"); ;
+            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : "") + ".dlq");
             _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
             //message listener
