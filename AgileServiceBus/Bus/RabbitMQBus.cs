@@ -285,7 +285,8 @@ namespace AgileSB.Bus
         public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string tag, ushort prefetchCount, AbstractValidator<TMessage> validator, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
         {
             //naming validation
-            CheckQueueNaming(tag, "Invalid tag");
+            if (tag != null)
+                CheckQueueNaming(tag, "Invalid tag");
 
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
@@ -508,7 +509,7 @@ namespace AgileSB.Bus
         {
             //validation with regular expression
             Regex regex = new Regex("^[a-zA-Z0-9]+$");
-            if (!regex.IsMatch(word))
+            if (!regex.IsMatch(word ?? ""))
                 throw new QueueNamingException(exceptionMessage);
 
             //forbidden words
