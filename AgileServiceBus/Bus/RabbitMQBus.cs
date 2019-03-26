@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -283,6 +284,9 @@ namespace AgileSB.Bus
 
         public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, AbstractValidator<TMessage> validator, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
         {
+            //naming validation
+            CheckQueueNaming(topic, "Invalid tag");
+
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
 
@@ -498,6 +502,24 @@ namespace AgileSB.Bus
 
             //response
             return response.Data;
+        }
+
+        private void CheckQueueNaming(string word, string exceptionMessage)
+        {
+            //validation with regular expression
+            Regex regex = new Regex("[a-zA-Z0-9]{3,30}");
+            if (!regex.IsMatch(word))
+                throw new QueueNamingException(exceptionMessage);
+
+            //forbidden words
+            switch (word.ToLower())
+            {
+                case "request":
+                case "response":
+                case "event":
+                case "dlq":
+                    throw new QueueNamingException(exceptionMessage);
+            }
         }
 
         private async Task LogOnConsumed(string queueName, BasicDeliverEventArgs args)
