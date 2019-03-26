@@ -282,10 +282,10 @@ namespace AgileSB.Bus
             return retryHandler;
         }
 
-        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string topic, ushort prefetchCount, AbstractValidator<TMessage> validator, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
+        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string tag, ushort prefetchCount, AbstractValidator<TMessage> validator, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
         {
             //naming validation
-            CheckQueueNaming(topic, "Invalid tag");
+            CheckQueueNaming(tag, "Invalid tag");
 
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
@@ -308,9 +308,9 @@ namespace AgileSB.Bus
             string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
             string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (typeof(TMessage).Name.ToLower() + "." + (topic != null ? topic.ToLower() : "*"));
-            string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : ""));
-            string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + (topic != null ? ("-" + topic.ToLower()) : ""));
+            string routingKey = (typeof(TMessage).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*"));
+            string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : ""));
+            string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : ""));
             channel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
             _deadLetterQueueChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
             channel.QueueDeclare(queue, true, false, false, null);
@@ -320,7 +320,7 @@ namespace AgileSB.Bus
             //creates dead letter queue
             string deadLetterQueue = (queue + "-dlq");
             _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
-            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (topic != null ? ("." + topic.ToLower()) : "") + ".dlq");
+            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq");
             _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
             //message listener
