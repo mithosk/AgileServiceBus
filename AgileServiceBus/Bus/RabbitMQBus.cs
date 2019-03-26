@@ -507,7 +507,7 @@ namespace AgileSB.Bus
         private void CheckQueueNaming(string word, string exceptionMessage)
         {
             //validation with regular expression
-            Regex regex = new Regex("[a-zA-Z0-9]{3,30}");
+            Regex regex = new Regex("^[a-zA-Z0-9]+$");
             if (!regex.IsMatch(word))
                 throw new QueueNamingException(exceptionMessage);
 
