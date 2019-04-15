@@ -27,24 +27,24 @@ namespace AgileSB.Bus
     public class RabbitMQBus : IBus
     {
         private const ushort RESPONDER_PREFETCHCOUNT = 30;
-        private const ushort HANDLER_PREFETCHCOUNT = 8;
+        private const ushort EVENT_HANDLER_PREFETCHCOUNT = 8;
         private const int REQUEST_TIMEOUT = 7000;
         private const int DEAD_LETTER_QUEUE_RECOVERY_LIMIT = 1000;
         private const ushort MIN_RETRY_DELAY = 1;
         private const ushort MAX_RETRY_DELAY = 250;
         private const ushort RETRY_LIMIT = 5;
         private const string DEAD_LETTER_QUEUE_EXCHANGE = "dead_letter_queue";
-        private const string DIRECT_REPLY_TO_QUEUE = "amq.rabbitmq.reply-to";
+        private const string DIRECT_REPLY_QUEUE = "amq.rabbitmq.reply-to";
         private const byte SEND_NUMBER_OF_THREADS = 4;
         private const byte RECEIVE_NUMBER_OF_THREADS = 16;
+        private const byte DIRECT_REPLY_NUMBER_OF_THREADS = 1;
         private const byte DEAD_LETTER_QUEUE_NUMBER_OF_THREADS = 1;
-        private const byte RESPONSE_NUMBER_OF_THREADS = 1;
 
         private IConnection _connection;
         private IModel _requestChannel;
         private IModel _notifyChannel;
         private IModel _responderChannel;
-        private IModel _handlerChannel;
+        private IModel _eventHandlerChannel;
         private IModel _deadLetterQueueChannel;
         private string _appId;
         private ResponseWaiter _responseWaiter;
@@ -52,7 +52,7 @@ namespace AgileSB.Bus
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _sendTaskScheduler;
         private MultiThreadTaskScheduler _receiveTaskScheduler;
-        private MultiThreadTaskScheduler _directReplyToTaskScheduler;
+        private MultiThreadTaskScheduler _directReplyTaskScheduler;
         private MultiThreadTaskScheduler _deadLetterQueueTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
         private Type _tracerType;
@@ -80,8 +80,8 @@ namespace AgileSB.Bus
             _notifyChannel = _connection.CreateModel();
             _responderChannel = _connection.CreateModel();
             _responderChannel.BasicQos(0, RESPONDER_PREFETCHCOUNT, false);
-            _handlerChannel = _connection.CreateModel();
-            _handlerChannel.BasicQos(0, HANDLER_PREFETCHCOUNT, false);
+            _eventHandlerChannel = _connection.CreateModel();
+            _eventHandlerChannel.BasicQos(0, EVENT_HANDLER_PREFETCHCOUNT, false);
             _deadLetterQueueChannel = _connection.CreateModel();
 
             //application identifier
@@ -103,10 +103,10 @@ namespace AgileSB.Bus
                 },
                 _cancellationTokenSource.Token,
                 TaskCreationOptions.DenyChildAttach,
-                _directReplyToTaskScheduler);
+                _directReplyTaskScheduler);
             };
 
-            _requestChannel.BasicConsume(DIRECT_REPLY_TO_QUEUE, true, consumer);
+            _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
 
             //builded container
             _container = null;
@@ -117,7 +117,7 @@ namespace AgileSB.Bus
             //custom task schedulers
             _sendTaskScheduler = new MultiThreadTaskScheduler(SEND_NUMBER_OF_THREADS);
             _receiveTaskScheduler = new MultiThreadTaskScheduler(RECEIVE_NUMBER_OF_THREADS);
-            _directReplyToTaskScheduler = new MultiThreadTaskScheduler(RESPONSE_NUMBER_OF_THREADS);
+            _directReplyTaskScheduler = new MultiThreadTaskScheduler(DIRECT_REPLY_NUMBER_OF_THREADS);
             _deadLetterQueueTaskScheduler = new MultiThreadTaskScheduler(DEAD_LETTER_QUEUE_NUMBER_OF_THREADS);
 
             //cancellation token
@@ -294,11 +294,11 @@ namespace AgileSB.Bus
             string routingKey = (typeof(TMessage).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*"));
             string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : ""));
             string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : ""));
-            _handlerChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
-            _handlerChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
-            _handlerChannel.QueueDeclare(queue, true, false, false, null);
-            _handlerChannel.QueueBind(queue, exchange, routingKey);
-            _handlerChannel.QueueBind(queue, DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey);
+            _eventHandlerChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
+            _eventHandlerChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
+            _eventHandlerChannel.QueueDeclare(queue, true, false, false, null);
+            _eventHandlerChannel.QueueBind(queue, exchange, routingKey);
+            _eventHandlerChannel.QueueBind(queue, DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey);
 
             //creates dead letter queue
             string deadLetterQueue = (queue + "-dlq");
@@ -307,7 +307,7 @@ namespace AgileSB.Bus
             _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
             //message listener
-            EventingBasicConsumer consumer = new EventingBasicConsumer(_handlerChannel);
+            EventingBasicConsumer consumer = new EventingBasicConsumer(_eventHandlerChannel);
             consumer.Received += (obj, args) =>
             {
                 Task.Factory.StartNew(async () =>
@@ -352,14 +352,14 @@ namespace AgileSB.Bus
                     }
 
                     //acknowledgment
-                    _handlerChannel.BasicAck(args.DeliveryTag, false);
+                    _eventHandlerChannel.BasicAck(args.DeliveryTag, false);
                 },
                 _cancellationTokenSource.Token,
                 TaskCreationOptions.DenyChildAttach,
                 TaskScheduler.Default);
             };
 
-            _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(_handlerChannel, queue, consumer));
+            _toActivateConsumers.Add(new Tuple<IModel, string, EventingBasicConsumer>(_eventHandlerChannel, queue, consumer));
 
             //message restore
             Task.Factory.StartNew(async () =>
@@ -446,7 +446,7 @@ namespace AgileSB.Bus
                 IBasicProperties properties = _requestChannel.CreateBasicProperties();
                 properties.MessageId = Guid.NewGuid().ToString();
                 properties.AppId = _appId;
-                properties.ReplyTo = DIRECT_REPLY_TO_QUEUE;
+                properties.ReplyTo = DIRECT_REPLY_QUEUE;
                 properties.CorrelationId = correlationId;
                 properties.Headers = new Dictionary<string, object>();
                 properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
@@ -616,13 +616,13 @@ namespace AgileSB.Bus
 
             _sendTaskScheduler.Dispose();
             _receiveTaskScheduler.Dispose();
-            _directReplyToTaskScheduler.Dispose();
+            _directReplyTaskScheduler.Dispose();
             _deadLetterQueueTaskScheduler.Dispose();
 
             _requestChannel.Dispose();
             _notifyChannel.Dispose();
             _responderChannel.Dispose();
-            _handlerChannel.Dispose();
+            _eventHandlerChannel.Dispose();
             _deadLetterQueueChannel.Dispose();
 
             _connection.Dispose();
