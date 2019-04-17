@@ -37,7 +37,6 @@ namespace AgileSB.Bus
         private const string DIRECT_REPLY_QUEUE = "amq.rabbitmq.reply-to";
         private const byte SEND_NUMBER_OF_THREADS = 4;
         private const byte RECEIVE_NUMBER_OF_THREADS = 16;
-        private const byte DIRECT_REPLY_NUMBER_OF_THREADS = 1;
         private const byte DEAD_LETTER_QUEUE_NUMBER_OF_THREADS = 1;
 
         private IConnection _connection;
@@ -52,7 +51,6 @@ namespace AgileSB.Bus
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _sendTaskScheduler;
         private MultiThreadTaskScheduler _receiveTaskScheduler;
-        private MultiThreadTaskScheduler _directReplyTaskScheduler;
         private MultiThreadTaskScheduler _deadLetterQueueTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
         private Type _tracerType;
@@ -97,13 +95,7 @@ namespace AgileSB.Bus
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestChannel);
             consumer.Received += (obj, args) =>
             {
-                Task.Factory.StartNew(() =>
-                {
-                    _responseWaiter.Resolve(args.BasicProperties.CorrelationId, Encoding.UTF8.GetString(args.Body));
-                },
-                _cancellationTokenSource.Token,
-                TaskCreationOptions.DenyChildAttach,
-                _directReplyTaskScheduler);
+                _responseWaiter.Resolve(args.BasicProperties.CorrelationId, Encoding.UTF8.GetString(args.Body));
             };
 
             _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
@@ -117,7 +109,6 @@ namespace AgileSB.Bus
             //custom task schedulers
             _sendTaskScheduler = new MultiThreadTaskScheduler(SEND_NUMBER_OF_THREADS);
             _receiveTaskScheduler = new MultiThreadTaskScheduler(RECEIVE_NUMBER_OF_THREADS);
-            _directReplyTaskScheduler = new MultiThreadTaskScheduler(DIRECT_REPLY_NUMBER_OF_THREADS);
             _deadLetterQueueTaskScheduler = new MultiThreadTaskScheduler(DEAD_LETTER_QUEUE_NUMBER_OF_THREADS);
 
             //cancellation token
@@ -616,7 +607,6 @@ namespace AgileSB.Bus
 
             _sendTaskScheduler.Dispose();
             _receiveTaskScheduler.Dispose();
-            _directReplyTaskScheduler.Dispose();
             _deadLetterQueueTaskScheduler.Dispose();
 
             _requestChannel.Dispose();
