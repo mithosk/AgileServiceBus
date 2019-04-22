@@ -4,7 +4,6 @@ using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
 using AgileSB.Log;
-using AgileSB.Utilities;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
 using AgileServiceBus.Tracing;
@@ -28,7 +27,7 @@ namespace AgileSB.Bus
     {
         private const ushort RESPONDER_PREFETCHCOUNT = 30;
         private const ushort EVENT_HANDLER_PREFETCHCOUNT = 8;
-        private const int REQUEST_TIMEOUT = 7000;
+        private const ushort REQUEST_TIMEOUT = 7000;
         private const int DEAD_LETTER_QUEUE_RECOVERY_LIMIT = 1000;
         private const ushort MIN_RETRY_DELAY = 1;
         private const ushort MAX_RETRY_DELAY = 250;
@@ -46,7 +45,7 @@ namespace AgileSB.Bus
         private IModel _eventHandlerChannel;
         private IModel _deadLetterQueueChannel;
         private string _appId;
-        private ResponseWaiter _responseWaiter;
+        private GroupingMessageQueue _responsesQueue;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _sendTaskScheduler;
@@ -88,14 +87,14 @@ namespace AgileSB.Bus
             //builder for container
             Container = new ContainerBuilder();
 
-            //response waiter
-            _responseWaiter = new ResponseWaiter(REQUEST_TIMEOUT);
+            //response queue
+            _responsesQueue = new GroupingMessageQueue(REQUEST_TIMEOUT);
 
             //response listener         
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestChannel);
             consumer.Received += (obj, args) =>
             {
-                _responseWaiter.Resolve(args.BasicProperties.CorrelationId, Encoding.UTF8.GetString(args.Body));
+                _responsesQueue.AddMessage(Encoding.UTF8.GetString(args.Body), args.BasicProperties.CorrelationId);
             };
 
             _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
@@ -432,7 +431,7 @@ namespace AgileSB.Bus
             {
                 _requestChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
 
-                _responseWaiter.Register(correlationId);
+                _responsesQueue.AddGroup(correlationId);
 
                 IBasicProperties properties = _requestChannel.CreateBasicProperties();
                 properties.MessageId = Guid.NewGuid().ToString();
@@ -456,11 +455,11 @@ namespace AgileSB.Bus
             //waiting response
             await Task.Factory.StartNew(() =>
             {
-                string message = _responseWaiter.Wait(correlationId);
+                string message = _responsesQueue.WaitMessage(correlationId);
                 if (message != null)
                     response = message.Deserialize<Response<TResponse>>();
 
-                _responseWaiter.Unregister(correlationId);
+                _responsesQueue.RemoveGroup(correlationId);
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
@@ -616,6 +615,8 @@ namespace AgileSB.Bus
             _deadLetterQueueChannel.Dispose();
 
             _connection.Dispose();
+
+            _responsesQueue.Dispose();
 
             if (_tracer != null)
                 _tracer.Dispose();
