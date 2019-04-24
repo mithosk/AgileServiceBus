@@ -45,7 +45,7 @@ namespace AgileSB.Bus
         private IModel _eventHandlerChannel;
         private IModel _deadLetterQueueChannel;
         private string _appId;
-        private GroupingMessageQueue _responsesQueue;
+        private MessageGroupQueue _responsesQueue;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _sendTaskScheduler;
@@ -88,7 +88,7 @@ namespace AgileSB.Bus
             Container = new ContainerBuilder();
 
             //response queue
-            _responsesQueue = new GroupingMessageQueue(REQUEST_TIMEOUT);
+            _responsesQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
 
             //response listener         
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestChannel);

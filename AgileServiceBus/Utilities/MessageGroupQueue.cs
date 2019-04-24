@@ -5,14 +5,14 @@ using System.Threading;
 
 namespace AgileServiceBus.Utilities
 {
-    public class GroupingMessageQueue : IDisposable
+    public class MessageGroupQueue : IDisposable
     {
         private Hashtable _queues;
         private ushort _timeout;
         private CancellationTokenSource _cancellationTokenSource;
         private CancellationToken _cancellationToken;
 
-        public GroupingMessageQueue(ushort timeout)
+        public MessageGroupQueue(ushort timeout)
         {
             _queues = new Hashtable();
             _timeout = timeout;
