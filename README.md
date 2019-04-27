@@ -10,12 +10,12 @@ public class MyEvent
 }
 ```
 ```csharp
-public class MyEventSubscriber : IPublishSubscriber<MyEvent>
+public class MyEventHandler : IEventHandler<MyEvent>
 {
     public IMicroserviceBus Bus { get; set; }
     public ITraceScope TraceScope { get; set; }
 
-    public async Task ConsumeAsync(MyEvent message)
+    public async Task HandleAsync(MyEvent message)
     {
 
     }
@@ -23,7 +23,7 @@ public class MyEventSubscriber : IPublishSubscriber<MyEvent>
 ```
 ```csharp
 IRegistrationBus rbus = new RabbitMQBus("HostName=xxx;Port=yyy;UserName=zzz;Password=kkk;AppId=aaa");
-rbus.Subscribe<MyEventSubscriber, MyEvent>(null, null, null, null);
+rbus.Subscribe<MyEventHandler, MyEvent>(null, null, null, null);
 ```
 
 
