@@ -47,7 +47,7 @@ namespace AgileServiceBus.Utilities
             {
                 return _tasks.ToList();
             }
-            catch
+            catch (ObjectDisposedException)
             {
                 return new List<Task>();
             }
