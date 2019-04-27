@@ -40,19 +40,19 @@ public class MyRequest
 }
 ```
 ```csharp
-public class MyRequestSubscriber : IRequestSubscriber<MyRequest>
+public class MyRequestResponder : IResponder<MyRequest>
 {
     public IMicroserviceBus Bus { get; set; }
     public ITraceScope TraceScope { get; set; }
 
-    public async Task<object> ResponseAsync(MyRequest message)
+    public async Task<object> RespondAsync(MyRequest message)
     {
 
     }
 }
 ```
 ```csharp
-rbus.Subscribe<MyRequestSubscriber, MyRequest>(null);
+rbus.Subscribe<MyRequestResponder, MyRequest>(null);
 rbus.RegistrationCompleted();
 ```
 
