@@ -178,7 +178,7 @@ namespace AgileSB.Bus
             _sendTaskScheduler);
         }
 
-        public IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IRequestSubscriber<TRequest> where TRequest : class
+        public IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IResponder<TRequest> where TRequest : class
         {
             //subscriber registration in a container
             Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
@@ -210,7 +210,7 @@ namespace AgileSB.Bus
                     //tracing data
                     string traceSpanId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"])).Deserialize<string>();
                     string traceId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"])).Deserialize<string>();
-                    string traceDisplayName = "Response-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
+                    string traceDisplayName = "Respond-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
 
                     //response action
                     Response<object> response = new Response<object>();
@@ -229,7 +229,7 @@ namespace AgileSB.Bus
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
-                            response.Data = await subscriber.ResponseAsync(request);
+                            response.Data = await subscriber.RespondAsync(request);
                         }
                     },
                     async (exception, retryIndex, retryLimit) =>
