@@ -265,7 +265,7 @@ namespace AgileSB.Bus
             return retryHandler;
         }
 
-        public IExcludeForRetry Subscribe<TSubscriber, TMessage>(string tag, AbstractValidator<TMessage> validator, string retryCron, ushort? retryLimit) where TSubscriber : IPublishSubscriber<TMessage> where TMessage : class
+        public IExcludeForRetry Subscribe<TSubscriber, TEvent>(string tag, AbstractValidator<TEvent> validator, string retryCron, ushort? retryLimit) where TSubscriber : IEventHandler<TEvent> where TEvent : class
         {
             //naming validation
             if (tag != null)
@@ -278,12 +278,12 @@ namespace AgileSB.Bus
             IRetry retryHandler = new RetryHandler(0, 0, 0, false);
 
             //creates queue and exchanges
-            string directory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TMessage).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
             string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (typeof(TMessage).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*"));
-            string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : ""));
-            string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TMessage).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : ""));
+            string routingKey = (typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*"));
+            string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : ""));
+            string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TEvent).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : ""));
             _eventHandlerChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
             _eventHandlerChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
             _eventHandlerChannel.QueueDeclare(queue, true, false, false, null);
@@ -292,7 +292,7 @@ namespace AgileSB.Bus
 
             //creates dead letter queue
             string deadLetterQueue = (queue + "-dlq");
-            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TMessage).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq");
+            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq");
             _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
             _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
@@ -306,19 +306,19 @@ namespace AgileSB.Bus
 
                     try
                     {
-                        TMessage message = Encoding.UTF8.GetString(args.Body).Deserialize<TMessage>();
+                        TEvent message = Encoding.UTF8.GetString(args.Body).Deserialize<TEvent>();
                         if (validator != null)
                             await validator.ValidateAndThrowAsync(message, (directory + "." + subdirectory + "." + message.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
-                        using (ITraceScope traceScope = new TraceScope("Handle-" + directory + "." + subdirectory + "." + typeof(TMessage).Name, _tracer))
+                        using (ITraceScope traceScope = new TraceScope("Handle-" + directory + "." + subdirectory + "." + typeof(TEvent).Name, _tracer))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
-                            await subscriber.ConsumeAsync(message);
+                            await subscriber.HandleAsync(message);
                         }
 
                         await LogOnConsumed(queue, args);
