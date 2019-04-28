@@ -12,6 +12,7 @@ namespace AgileServiceBus.Tracing
 
         private MultiThreadTaskScheduler _taskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
+        private CancellationToken _cancellationToken;
 
         public abstract string CreateTraceId();
         public abstract string CreateSpanId();
@@ -21,6 +22,7 @@ namespace AgileServiceBus.Tracing
         {
             _taskScheduler = new MultiThreadTaskScheduler(NUMBER_OF_THREADS);
             _cancellationTokenSource = new CancellationTokenSource();
+            _cancellationToken = _cancellationTokenSource.Token;
         }
 
         public ITraceScope CreateScope(string displayName)
@@ -38,7 +40,7 @@ namespace AgileServiceBus.Tracing
                 }
                 catch { }
             },
-            _cancellationTokenSource.Token,
+            _cancellationToken,
             TaskCreationOptions.DenyChildAttach,
             _taskScheduler);
         }
@@ -46,6 +48,7 @@ namespace AgileServiceBus.Tracing
         public void Dispose()
         {
             _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Dispose();
             _taskScheduler.Dispose();
         }
     }
