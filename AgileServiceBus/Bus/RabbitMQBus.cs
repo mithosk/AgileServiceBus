@@ -240,7 +240,7 @@ namespace AgileSB.Bus
                     });
 
                     //response message
-                    if (typeof(TSubscriber).GetMethod("ResponseAsync").GetCustomAttribute<FakeResponse>() == null)
+                    if (typeof(TSubscriber).GetMethod("RespondAsync").GetCustomAttribute<FakeResponse>() == null)
                     {
                         message = response.Serialize();
                         IBasicProperties properties = _responderChannel.CreateBasicProperties();
