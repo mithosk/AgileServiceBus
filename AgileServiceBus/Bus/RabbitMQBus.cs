@@ -156,8 +156,8 @@ namespace AgileSB.Bus
             //message direction
             string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : ""));
+            string exchange = "event_" + directory.ToLower() + "_" + subdirectory.ToLower();
+            string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "");
 
             //message publishing
             await Task.Factory.StartNew(() =>
