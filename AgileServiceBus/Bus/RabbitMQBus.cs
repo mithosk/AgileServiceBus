@@ -280,10 +280,10 @@ namespace AgileSB.Bus
             //creates queue and exchanges
             string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*"));
-            string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : ""));
-            string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TEvent).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : ""));
+            string exchange = "event_" + directory.ToLower() + "_" + subdirectory.ToLower();
+            string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*");
+            string restoreRoutingKey = _appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "");
+            string queue = _appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TEvent).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : "");
             _eventHandlerChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
             _eventHandlerChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
             _eventHandlerChannel.QueueDeclare(queue, true, false, false, null);
