@@ -189,9 +189,9 @@ namespace AgileSB.Bus
             //creates queue and exchange
             string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string exchange = "request_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = typeof(TRequest).Name.ToLower();
-            string queue = (_appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower());
+            string queue = _appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower();
             _responderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
             _responderChannel.QueueDeclare(queue, true, false, false, null);
             _responderChannel.QueueBind(queue, exchange, routingKey);
