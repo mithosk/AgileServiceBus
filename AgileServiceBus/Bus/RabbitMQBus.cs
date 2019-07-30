@@ -208,8 +208,8 @@ namespace AgileSB.Bus
                     string message = Encoding.UTF8.GetString(args.Body);
 
                     //tracing data
-                    string traceSpanId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"])).Deserialize<string>();
-                    string traceId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"])).Deserialize<string>();
+                    string traceSpanId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"]).Deserialize<string>();
+                    string traceId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"]).Deserialize<string>();
                     string traceDisplayName = "Respond-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
 
                     //response action
