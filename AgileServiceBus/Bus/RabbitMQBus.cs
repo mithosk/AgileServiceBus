@@ -420,7 +420,7 @@ namespace AgileSB.Bus
             //message direction
             string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string exchange = "request_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = request.GetType().Name.ToLower();
 
             //correlation
