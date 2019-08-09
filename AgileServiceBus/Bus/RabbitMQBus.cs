@@ -15,6 +15,7 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -172,10 +173,10 @@ namespace AgileSB.Bus
                 properties.MessageId = Guid.NewGuid().ToString();
                 properties.AppId = _appId;
                 properties.Headers = new Dictionary<string, object>();
-                properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
-                properties.Headers.Add("RetryIndex", 0.Serialize());
+                properties.Headers.Add("SendDate", DateTime.UtcNow.ToString(CultureInfo.InvariantCulture));
+                properties.Headers.Add("RetryIndex", "0");
                 properties.Persistent = true;
-                _notifyChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(message.Serialize()));
+                _notifyChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(_jsonConverter.Serialize(message)));
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
@@ -212,8 +213,8 @@ namespace AgileSB.Bus
                     string message = Encoding.UTF8.GetString(args.Body);
 
                     //tracing data
-                    string traceSpanId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"]).Deserialize<string>();
-                    string traceId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"]).Deserialize<string>();
+                    string traceSpanId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"]);
+                    string traceId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"]);
                     string traceDisplayName = "Respond-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
 
                     //response action
@@ -221,7 +222,7 @@ namespace AgileSB.Bus
 
                     await retryHandler.ExecuteAsync(async () =>
                     {
-                        TRequest request = message.Deserialize<TRequest>();
+                        TRequest request = _jsonConverter.Deserialize<TRequest>(message);
                         if (validator != null)
                             await validator.ValidateAndThrowAsync(request, (directory + "." + subdirectory + "." + request.GetType().Name + " is not valid"));
 
@@ -246,7 +247,7 @@ namespace AgileSB.Bus
                     //response message
                     if (typeof(TSubscriber).GetMethod("RespondAsync").GetCustomAttribute<FakeResponse>() == null)
                     {
-                        message = response.Serialize();
+                        message = _jsonConverter.Serialize(response);
                         IBasicProperties properties = _responderChannel.CreateBasicProperties();
                         properties.MessageId = Guid.NewGuid().ToString();
                         properties.Persistent = false;
@@ -310,7 +311,7 @@ namespace AgileSB.Bus
 
                     try
                     {
-                        TEvent message = Encoding.UTF8.GetString(args.Body).Deserialize<TEvent>();
+                        TEvent message = _jsonConverter.Deserialize<TEvent>(Encoding.UTF8.GetString(args.Body));
                         if (validator != null)
                             await validator.ValidateAndThrowAsync(message, (directory + "." + subdirectory + "." + message.GetType().Name + " is not valid"));
 
@@ -331,15 +332,15 @@ namespace AgileSB.Bus
                     {
                         await LogOnConsumeError(queue, args, exception, retryLimit);
 
-                        ushort retryIndex = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"])).Deserialize<ushort>();
+                        ushort retryIndex = ushort.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"]));
                         if (retryHandler.IsForRetry(exception) && !String.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
                         {
                             IBasicProperties properties = _deadLetterQueueChannel.CreateBasicProperties();
                             properties.MessageId = args.BasicProperties.MessageId;
                             properties.AppId = _appId;
                             properties.Headers = new Dictionary<string, object>();
-                            properties.Headers.Add("SendDate", DateTime.UtcNow.Serialize());
-                            properties.Headers.Add("RetryIndex", (++retryIndex).Serialize());
+                            properties.Headers.Add("SendDate", DateTime.UtcNow.ToString(CultureInfo.InvariantCulture));
+                            properties.Headers.Add("RetryIndex", (++retryIndex).ToString());
                             properties.Persistent = true;
                             _deadLetterQueueChannel.BasicPublish(DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey, properties, args.Body);
                         }
@@ -443,11 +444,11 @@ namespace AgileSB.Bus
                 properties.ReplyTo = DIRECT_REPLY_QUEUE;
                 properties.CorrelationId = correlationId;
                 properties.Headers = new Dictionary<string, object>();
-                properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
-                properties.Headers.Add("TraceSpanId", traceSpanId.Serialize());
-                properties.Headers.Add("TraceId", traceId.Serialize());
+                properties.Headers.Add("SendDate", DateTime.Now.ToString(CultureInfo.InvariantCulture));
+                properties.Headers.Add("TraceSpanId", traceSpanId);
+                properties.Headers.Add("TraceId", traceId);
                 properties.Persistent = false;
-                _requestChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
+                _requestChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(_jsonConverter.Serialize(request)));
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
@@ -461,7 +462,7 @@ namespace AgileSB.Bus
             {
                 string message = _responsesQueue.WaitMessage(correlationId);
                 if (message != null)
-                    response = message.Deserialize<Response<TResponse>>();
+                    response = _jsonConverter.Deserialize<Response<TResponse>>(message);
 
                 _responsesQueue.RemoveGroup(correlationId);
             },
@@ -508,7 +509,7 @@ namespace AgileSB.Bus
                 data.Message = Encoding.UTF8.GetString(args.Body);
                 data.MessageId = args.BasicProperties.MessageId;
                 data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
+                data.PublishDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
 
                 await Logger.LogAsync(data);
             }
@@ -523,10 +524,10 @@ namespace AgileSB.Bus
                 data.Message = Encoding.UTF8.GetString(args.Body);
                 data.MessageId = args.BasicProperties.MessageId;
                 data.Exception = exception;
-                data.RetryIndex = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"])).Deserialize<uint>();
+                data.RetryIndex = uint.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"]));
                 data.RetryLimit = retryLimit;
                 data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
+                data.PublishDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
 
                 await Logger.LogAsync(data);
             }
@@ -541,7 +542,7 @@ namespace AgileSB.Bus
                 data.Message = Encoding.UTF8.GetString(args.Body);
                 data.MessageId = args.BasicProperties.MessageId;
                 data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
+                data.PublishDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
 
                 await Logger.LogAsync(data);
             }
@@ -556,7 +557,7 @@ namespace AgileSB.Bus
                 data.Request = Encoding.UTF8.GetString(args.Body);
                 data.CorrelationId = args.BasicProperties.CorrelationId;
                 data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
+                data.RequestDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
 
                 await Logger.LogAsync(data);
             }
@@ -571,7 +572,7 @@ namespace AgileSB.Bus
                 data.Response = response;
                 data.CorrelationId = args.BasicProperties.CorrelationId;
                 data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
+                data.RequestDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
 
                 await Logger.LogAsync(data);
             }
@@ -589,7 +590,7 @@ namespace AgileSB.Bus
                 data.RetryIndex = retryIndex;
                 data.RetryLimit = retryLimit;
                 data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
+                data.RequestDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
 
                 await Logger.LogAsync(data);
             }
