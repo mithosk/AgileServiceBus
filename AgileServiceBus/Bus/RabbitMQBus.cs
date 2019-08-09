@@ -54,6 +54,7 @@ namespace AgileSB.Bus
         private CancellationTokenSource _cancellationTokenSource;
         private Type _tracerType;
         private Tracer _tracer;
+        private JsonConverter _jsonConverter;
 
         public ILogger Logger { get; set; }
         public ContainerBuilder Container { get; }
@@ -115,6 +116,9 @@ namespace AgileSB.Bus
 
             //default tracer
             _tracerType = typeof(DefaultTracer);
+
+            //json converter
+            _jsonConverter = new JsonConverter();
         }
 
         public void RegisterTracer<TTracer>() where TTracer : Tracer
