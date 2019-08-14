@@ -9,15 +9,23 @@ namespace AgileServiceBus.Utilities
         public string ExceptionCode { get; set; }
         public string ExceptionMessage { get; set; }
 
-        public ResponseWrapper() { }
+        public ResponseWrapper()
+        {
+            Response = default;
+            ExceptionCode = null;
+            ExceptionMessage = null;
+        }
 
         public ResponseWrapper(TResponse response)
         {
             Response = response;
+            ExceptionCode = null;
+            ExceptionMessage = null;
         }
 
         public ResponseWrapper(Exception exception)
         {
+            Response = default;
             ExceptionCode = string.Concat(exception.GetType().Name.Select((cha, i) => i > 0 && char.IsUpper(cha) ? "_" + cha.ToString() : cha.ToString())).ToUpper();
             ExceptionMessage = exception.Message;
         }
