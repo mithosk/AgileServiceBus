@@ -5,9 +5,11 @@ namespace AgileServiceBus.Utilities
 {
     public class ResponseWrapper<TResponse>
     {
-        public TResponse Response { get; private set; }
-        public string ExceptionCode { get; private set; }
-        public string ExceptionMessage { get; private set; }
+        public TResponse Response { get; set; }
+        public string ExceptionCode { get; set; }
+        public string ExceptionMessage { get; set; }
+
+        public ResponseWrapper() { }
 
         public ResponseWrapper(TResponse response)
         {
