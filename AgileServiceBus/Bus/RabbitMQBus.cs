@@ -1,5 +1,4 @@
 ﻿using AgileSB.Attributes;
-using AgileSB.DTO;
 using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
@@ -218,7 +217,7 @@ namespace AgileSB.Bus
                     string traceDisplayName = "Respond-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
 
                     //response action
-                    Response<object> response = new Response<object>();
+                    ResponseWrapper<object> responseWrapper = null;
 
                     await retryHandler.ExecuteAsync(async () =>
                     {
@@ -234,20 +233,19 @@ namespace AgileSB.Bus
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
-                            response.Data = await subscriber.RespondAsync(request);
+                            responseWrapper = new ResponseWrapper<object>(await subscriber.RespondAsync(request));
                         }
                     },
                     async (exception, retryIndex, retryLimit) =>
                     {
                         await LogOnResponseError(queue, args, exception, retryIndex, retryLimit);
-                        response.ExceptionCode = exception.GetType().Name.Replace("Exception", "");
-                        response.ExceptionMessage = exception.Message;
+                        responseWrapper = new ResponseWrapper<object>(exception);
                     });
 
                     //response message
                     if (typeof(TSubscriber).GetMethod("RespondAsync").GetCustomAttribute<FakeResponse>() == null)
                     {
-                        message = _jsonConverter.Serialize(response);
+                        message = _jsonConverter.Serialize(responseWrapper);
                         IBasicProperties properties = _responderChannel.CreateBasicProperties();
                         properties.MessageId = Guid.NewGuid().ToString();
                         properties.Persistent = false;
@@ -455,14 +453,14 @@ namespace AgileSB.Bus
             _sendTaskScheduler);
 
             //response object
-            Response<TResponse> response = null;
+            ResponseWrapper<TResponse> responseWrapper = null;
 
             //waiting response
             await Task.Factory.StartNew(() =>
             {
                 string message = _responsesQueue.WaitMessage(correlationId);
                 if (message != null)
-                    response = _jsonConverter.Deserialize<Response<TResponse>>(message);
+                    responseWrapper = _jsonConverter.Deserialize<ResponseWrapper<TResponse>>(message);
 
                 _responsesQueue.RemoveGroup(correlationId);
             },
@@ -471,15 +469,15 @@ namespace AgileSB.Bus
             _receiveTaskScheduler);
 
             //timeout
-            if (response == null)
+            if (responseWrapper == null)
                 throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
 
             //remote error
-            if (response.ExceptionCode != null)
-                throw (new RemoteException(response.ExceptionCode, response.ExceptionMessage));
+            if (responseWrapper.ExceptionCode != null)
+                throw (new RemoteException(responseWrapper.ExceptionCode, responseWrapper.ExceptionMessage));
 
             //response
-            return response.Data;
+            return responseWrapper.Response;
         }
 
         private void CheckQueueNaming(string word, string exceptionMessage)
