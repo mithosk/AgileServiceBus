@@ -26,7 +26,7 @@ namespace AgileServiceBus.Utilities
         public ResponseWrapper(Exception exception)
         {
             Response = default;
-            ExceptionCode = string.Concat(exception.GetType().Name.Select((cha, i) => i > 0 && char.IsUpper(cha) ? "_" + cha.ToString() : cha.ToString())).ToUpper();
+            ExceptionCode = string.Concat(exception.GetType().Name.Replace("Exception", "").Select((cha, i) => i > 0 && char.IsUpper(cha) ? "_" + cha.ToString() : cha.ToString())).ToUpper();
             ExceptionMessage = exception.Message;
         }
     }
