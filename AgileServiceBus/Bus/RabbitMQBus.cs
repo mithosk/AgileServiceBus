@@ -3,6 +3,7 @@ using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
 using AgileSB.Log;
+using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
 using AgileServiceBus.Tracing;
@@ -45,7 +46,7 @@ namespace AgileSB.Bus
         private IModel _eventHandlerChannel;
         private IModel _deadLetterQueueChannel;
         private string _appId;
-        private MessageGroupQueue _responsesQueue;
+        private MessageGroupQueue _responseQueue;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _sendTaskScheduler;
@@ -89,13 +90,13 @@ namespace AgileSB.Bus
             Container = new ContainerBuilder();
 
             //response queue
-            _responsesQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
+            _responseQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
 
             //response listener         
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestChannel);
             consumer.Received += (obj, args) =>
             {
-                _responsesQueue.AddMessage(Encoding.UTF8.GetString(args.Body), args.BasicProperties.CorrelationId);
+                _responseQueue.AddMessage(Encoding.UTF8.GetString(args.Body), args.BasicProperties.CorrelationId);
             };
 
             _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
@@ -434,7 +435,7 @@ namespace AgileSB.Bus
             {
                 _requestChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
 
-                _responsesQueue.AddGroup(correlationId);
+                _responseQueue.AddGroup(correlationId);
 
                 IBasicProperties properties = _requestChannel.CreateBasicProperties();
                 properties.MessageId = Guid.NewGuid().ToString();
@@ -458,11 +459,11 @@ namespace AgileSB.Bus
             //waiting response
             await Task.Factory.StartNew(() =>
             {
-                string message = _responsesQueue.WaitMessage(correlationId);
+                string message = _responseQueue.WaitMessage(correlationId);
                 if (message != null)
                     responseWrapper = _jsonConverter.Deserialize<ResponseWrapper<TResponse>>(message);
 
-                _responsesQueue.RemoveGroup(correlationId);
+                _responseQueue.RemoveGroup(correlationId);
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
@@ -474,7 +475,7 @@ namespace AgileSB.Bus
 
             //remote error
             if (responseWrapper.ExceptionCode != null)
-                throw (new RemoteException(responseWrapper.ExceptionCode, responseWrapper.ExceptionMessage));
+                throw new RemoteException(responseWrapper.ExceptionCode, responseWrapper.ExceptionMessage);
 
             //response
             return responseWrapper.Response;
@@ -619,7 +620,7 @@ namespace AgileSB.Bus
 
             _connection.Dispose();
 
-            _responsesQueue.Dispose();
+            _responseQueue.Dispose();
 
             if (_tracer != null)
                 _tracer.Dispose();
