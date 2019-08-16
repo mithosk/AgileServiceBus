@@ -7,11 +7,11 @@ namespace AgileServiceBus.Utilities
 {
     public class JsonConverter
     {
-        public static JsonSerializerSettings Settings { get; private set; }
+        private JsonSerializerSettings _settings;
 
-        static JsonConverter()
+        public JsonConverter()
         {
-            Settings = new JsonSerializerSettings
+            _settings = new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 Culture = CultureInfo.InvariantCulture,
@@ -19,7 +19,7 @@ namespace AgileServiceBus.Utilities
                 NullValueHandling = NullValueHandling.Ignore
             };
 
-            Settings.Converters.Add(new StringEnumConverter()
+            _settings.Converters.Add(new StringEnumConverter()
             {
                 AllowIntegerValues = false,
                 NamingStrategy = new CamelCaseNamingStrategy()
@@ -28,12 +28,12 @@ namespace AgileServiceBus.Utilities
 
         public string Serialize<TMessage>(TMessage message) where TMessage : class
         {
-            return JsonConvert.SerializeObject(message, Settings);
+            return JsonConvert.SerializeObject(message, _settings);
         }
 
         public TMessage Deserialize<TMessage>(string message) where TMessage : class
         {
-            return JsonConvert.DeserializeObject<TMessage>(message, Settings);
+            return JsonConvert.DeserializeObject<TMessage>(message, _settings);
         }
     }
 }
