@@ -635,6 +635,10 @@ namespace AgileSB.Bus
 
             _responseQueue.Dispose();
 
+
+            if (_logger != null)
+                _logger.Dispose();
+
             if (_tracer != null)
                 _tracer.Dispose();
         }
