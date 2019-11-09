@@ -2,7 +2,6 @@
 using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
-using AgileSB.Log;
 using AgileSB.Logging;
 using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
@@ -61,7 +60,6 @@ namespace AgileSB.Bus
         private Tracer _tracer;
         private JsonConverter _jsonConverter;
 
-        public ILogger Logger { get; set; }
         public ContainerBuilder Container { get; }
 
         public RabbitMQBus(string connectionString)
@@ -219,8 +217,6 @@ namespace AgileSB.Bus
             {
                 Task.Factory.StartNew(async () =>
                 {
-                    await LogOnRequest(queue, args);
-
                     //request message
                     string message = Encoding.UTF8.GetString(args.Body);
 
@@ -251,8 +247,9 @@ namespace AgileSB.Bus
                     },
                     async (exception, retryIndex, retryLimit) =>
                     {
-                        await LogOnResponseError(queue, args, exception, retryIndex, retryLimit);
                         responseWrapper = new ResponseWrapper<object>(exception);
+
+                        await Task.CompletedTask;
                     });
 
                     //response message
@@ -264,8 +261,6 @@ namespace AgileSB.Bus
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
                         _responderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(message));
-
-                        await LogOnResponse(queue, message, args);
                     }
 
                     //acknowledgment
@@ -318,8 +313,6 @@ namespace AgileSB.Bus
             {
                 Task.Factory.StartNew(async () =>
                 {
-                    await LogOnPublish(queue, args);
-
                     try
                     {
                         TEvent message = _jsonConverter.Deserialize<TEvent>(Encoding.UTF8.GetString(args.Body));
@@ -336,13 +329,9 @@ namespace AgileSB.Bus
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
                             await subscriber.HandleAsync(message);
                         }
-
-                        await LogOnConsumed(queue, args);
                     }
                     catch (Exception exception)
                     {
-                        await LogOnConsumeError(queue, args, exception, retryLimit);
-
                         ushort retryIndex = ushort.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"]));
                         if (retryHandler.IsForRetry(exception) && !String.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
                         {
@@ -512,102 +501,6 @@ namespace AgileSB.Bus
             }
         }
 
-        private async Task LogOnConsumed(string queueName, BasicDeliverEventArgs args)
-        {
-            if (Logger != null)
-            {
-                OnConsumed data = new OnConsumed();
-                data.QueueName = queueName;
-                data.Message = Encoding.UTF8.GetString(args.Body);
-                data.MessageId = args.BasicProperties.MessageId;
-                data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnConsumeError(string queueName, BasicDeliverEventArgs args, Exception exception, ushort? retryLimit)
-        {
-            if (Logger != null)
-            {
-                OnConsumeError data = new OnConsumeError();
-                data.QueueName = queueName;
-                data.Message = Encoding.UTF8.GetString(args.Body);
-                data.MessageId = args.BasicProperties.MessageId;
-                data.Exception = exception;
-                data.RetryIndex = uint.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"]));
-                data.RetryLimit = retryLimit;
-                data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnPublish(string queueName, BasicDeliverEventArgs args)
-        {
-            if (Logger != null)
-            {
-                OnPublish data = new OnPublish();
-                data.QueueName = queueName;
-                data.Message = Encoding.UTF8.GetString(args.Body);
-                data.MessageId = args.BasicProperties.MessageId;
-                data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnRequest(string queueName, BasicDeliverEventArgs args)
-        {
-            if (Logger != null)
-            {
-                OnRequest data = new OnRequest();
-                data.QueueName = queueName;
-                data.Request = Encoding.UTF8.GetString(args.Body);
-                data.CorrelationId = args.BasicProperties.CorrelationId;
-                data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnResponse(string queueName, string response, BasicDeliverEventArgs args)
-        {
-            if (Logger != null)
-            {
-                OnResponse data = new OnResponse();
-                data.RequestQueueName = queueName;
-                data.Response = response;
-                data.CorrelationId = args.BasicProperties.CorrelationId;
-                data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnResponseError(string queueName, BasicDeliverEventArgs args, Exception exception, ushort retryIndex, ushort retryLimit)
-        {
-            if (Logger != null)
-            {
-                OnResponseError data = new OnResponseError();
-                data.RequestQueueName = queueName;
-                data.Request = Encoding.UTF8.GetString(args.Body);
-                data.CorrelationId = args.BasicProperties.CorrelationId;
-                data.Exception = exception;
-                data.RetryIndex = retryIndex;
-                data.RetryLimit = retryLimit;
-                data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = DateTime.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"]), CultureInfo.InvariantCulture);
-
-                await Logger.LogAsync(data);
-            }
-        }
-
         private async Task CronDelay(string cron)
         {
             CrontabSchedule schedule = CrontabSchedule.Parse(cron);
@@ -634,7 +527,6 @@ namespace AgileSB.Bus
             _connection.Dispose();
 
             _responseQueue.Dispose();
-
 
             if (_logger != null)
                 _logger.Dispose();
