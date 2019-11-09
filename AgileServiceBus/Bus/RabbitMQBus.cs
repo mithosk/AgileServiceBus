@@ -6,6 +6,7 @@ using AgileSB.Log;
 using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
+using AgileServiceBus.Logging;
 using AgileServiceBus.Tracing;
 using AgileServiceBus.Utilities;
 using Autofac;
@@ -53,6 +54,8 @@ namespace AgileSB.Bus
         private MultiThreadTaskScheduler _receiveTaskScheduler;
         private MultiThreadTaskScheduler _deadLetterQueueTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
+        private Type _loggerType;
+        private Logger _logger;
         private Type _tracerType;
         private Tracer _tracer;
         private JsonConverter _jsonConverter;
@@ -115,11 +118,19 @@ namespace AgileSB.Bus
             //cancellation token
             _cancellationTokenSource = new CancellationTokenSource();
 
+            //default logger
+            _loggerType = typeof(DefaultLogger);
+
             //default tracer
             _tracerType = typeof(DefaultTracer);
 
             //json converter
             _jsonConverter = new JsonConverter();
+        }
+
+        public void RegisterLogger<TLogger>() where TLogger : Logger
+        {
+            _loggerType = typeof(TLogger);
         }
 
         public void RegisterTracer<TTracer>() where TTracer : Tracer
@@ -413,6 +424,7 @@ namespace AgileSB.Bus
         {
             _container = Container.Build();
 
+            _logger = (Logger)Activator.CreateInstance(_loggerType);
             _tracer = (Tracer)Activator.CreateInstance(_tracerType);
 
             foreach (Tuple<IModel, string, EventingBasicConsumer> toActivateConsumer in _toActivateConsumers)
