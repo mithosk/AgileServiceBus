@@ -3,6 +3,7 @@ using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
 using AgileSB.Log;
+using AgileSB.Logging;
 using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
