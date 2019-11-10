@@ -262,6 +262,20 @@ namespace AgileSB.Bus
                     {
                         responseWrapper = new ResponseWrapper<object>(exception);
 
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = args.BasicProperties.MessageId,
+                            CorrelationId = args.BasicProperties.CorrelationId,
+                            Type = MessageType.Request,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TRequest).Name,
+                            Body = message,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = exception,
+                            ToRetry = retryIndex != retryLimit
+                        });
+
                         await Task.CompletedTask;
                     });
 
@@ -274,6 +288,20 @@ namespace AgileSB.Bus
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
                         _responderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(message));
+
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = properties.MessageId,
+                            CorrelationId = properties.CorrelationId,
+                            Type = MessageType.Response,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TRequest).Name,
+                            Body = message,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = null,
+                            ToRetry = false
+                        });
                     }
 
                     //acknowledgment
