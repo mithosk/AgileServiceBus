@@ -147,13 +147,13 @@ namespace AgileSB.Bus
             await RequestAsync<object>(message);
         }
 
-        public async Task<TResponse> RequestAsync<TResponse>(object request, ITraceScope traceScope)
+        public async Task<TResponse> RequestAsync<TResponse>(object message, ITraceScope traceScope)
         {
-            string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = message.GetType().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = message.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
 
-            using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + request.GetType().Name))
-                return await RequestAsync<TResponse>(request, traceSubScope.SpanId, traceSubScope.TraceId);
+            using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + message.GetType().Name))
+                return await RequestAsync<TResponse>(message, traceSubScope.SpanId, traceSubScope.TraceId);
         }
 
         public async Task RequestAsync(object message, ITraceScope traceScope)
@@ -217,7 +217,7 @@ namespace AgileSB.Bus
                 Task.Factory.StartNew(async () =>
                 {
                     //request message
-                    string message = Encoding.UTF8.GetString(args.Body);
+                    string messageBody = Encoding.UTF8.GetString(args.Body);
 
                     //tracing data
                     string traceSpanId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"]);
@@ -229,19 +229,19 @@ namespace AgileSB.Bus
 
                     await retryHandler.ExecuteAsync(async () =>
                     {
-                        TRequest request = _jsonConverter.Deserialize<TRequest>(message);
+                        TRequest messageRequest = _jsonConverter.Deserialize<TRequest>(messageBody);
                         if (validator != null)
-                            await validator.ValidateAndThrowAsync(request, (directory + "." + subdirectory + "." + request.GetType().Name + " is not valid"));
+                            await validator.ValidateAndThrowAsync(messageRequest, (directory + "." + subdirectory + "." + messageRequest.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
-                        using (ITraceScope traceScope = ((traceSpanId != null && traceId != null) ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer)))
+                        using (ITraceScope traceScope = (traceSpanId != null && traceId != null) ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
-                            responseWrapper = new ResponseWrapper<object>(await subscriber.RespondAsync(request));
+                            responseWrapper = new ResponseWrapper<object>(await subscriber.RespondAsync(messageRequest));
                         }
 
                         _logger.Send(new MessageDetail
@@ -252,7 +252,7 @@ namespace AgileSB.Bus
                             Directory = directory,
                             Subdirectory = subdirectory,
                             Name = typeof(TRequest).Name,
-                            Body = message,
+                            Body = messageBody,
                             AppId = args.BasicProperties.AppId,
                             Exception = null,
                             ToRetry = false
@@ -270,7 +270,7 @@ namespace AgileSB.Bus
                             Directory = directory,
                             Subdirectory = subdirectory,
                             Name = typeof(TRequest).Name,
-                            Body = message,
+                            Body = messageBody,
                             AppId = args.BasicProperties.AppId,
                             Exception = exception,
                             ToRetry = retryIndex != retryLimit
@@ -282,12 +282,12 @@ namespace AgileSB.Bus
                     //response message
                     if (typeof(TSubscriber).GetMethod("RespondAsync").GetCustomAttribute<FakeResponse>() == null)
                     {
-                        message = _jsonConverter.Serialize(responseWrapper);
+                        messageBody = _jsonConverter.Serialize(responseWrapper);
                         IBasicProperties properties = _responderChannel.CreateBasicProperties();
                         properties.MessageId = Guid.NewGuid().ToString();
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
-                        _responderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(message));
+                        _responderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(messageBody));
 
                         _logger.Send(new MessageDetail
                         {
@@ -297,7 +297,7 @@ namespace AgileSB.Bus
                             Directory = directory,
                             Subdirectory = subdirectory,
                             Name = typeof(TRequest).Name,
-                            Body = message,
+                            Body = messageBody,
                             AppId = args.BasicProperties.AppId,
                             Exception = null,
                             ToRetry = false
@@ -356,9 +356,10 @@ namespace AgileSB.Bus
                 {
                     try
                     {
-                        TEvent message = _jsonConverter.Deserialize<TEvent>(Encoding.UTF8.GetString(args.Body));
+                        string messageBody = Encoding.UTF8.GetString(args.Body);
+                        TEvent messageEvent = _jsonConverter.Deserialize<TEvent>(messageBody);
                         if (validator != null)
-                            await validator.ValidateAndThrowAsync(message, (directory + "." + subdirectory + "." + message.GetType().Name + " is not valid"));
+                            await validator.ValidateAndThrowAsync(messageEvent, (directory + "." + subdirectory + "." + typeof(TEvent).Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
                         using (ITraceScope traceScope = new TraceScope("Handle-" + directory + "." + subdirectory + "." + typeof(TEvent).Name, _tracer))
@@ -368,8 +369,22 @@ namespace AgileSB.Bus
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
-                            await subscriber.HandleAsync(message);
+                            await subscriber.HandleAsync(messageEvent);
                         }
+
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = args.BasicProperties.MessageId,
+                            CorrelationId = null,
+                            Type = MessageType.Event,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TEvent).Name,
+                            Body = messageBody,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = null,
+                            ToRetry = false
+                        });
                     }
                     catch (Exception exception)
                     {
@@ -500,9 +515,9 @@ namespace AgileSB.Bus
             //waiting response
             await Task.Factory.StartNew(() =>
             {
-                string message = _responseQueue.WaitMessage(correlationId);
-                if (message != null)
-                    responseWrapper = _jsonConverter.Deserialize<ResponseWrapper<TResponse>>(message);
+                string messageBody = _responseQueue.WaitMessage(correlationId);
+                if (messageBody != null)
+                    responseWrapper = _jsonConverter.Deserialize<ResponseWrapper<TResponse>>(messageBody);
 
                 _responseQueue.RemoveGroup(correlationId);
             },
