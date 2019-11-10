@@ -16,7 +16,6 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -183,7 +182,6 @@ namespace AgileSB.Bus
                 properties.MessageId = Guid.NewGuid().ToString();
                 properties.AppId = _appId;
                 properties.Headers = new Dictionary<string, object>();
-                properties.Headers.Add("SendDate", DateTime.UtcNow.ToString(CultureInfo.InvariantCulture));
                 properties.Headers.Add("RetryIndex", "0");
                 properties.Persistent = true;
                 _notifyChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(_jsonConverter.Serialize(message)));
@@ -339,7 +337,6 @@ namespace AgileSB.Bus
                             properties.MessageId = args.BasicProperties.MessageId;
                             properties.AppId = _appId;
                             properties.Headers = new Dictionary<string, object>();
-                            properties.Headers.Add("SendDate", DateTime.UtcNow.ToString(CultureInfo.InvariantCulture));
                             properties.Headers.Add("RetryIndex", (++retryIndex).ToString());
                             properties.Persistent = true;
                             _deadLetterQueueChannel.BasicPublish(DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey, properties, args.Body);
@@ -445,7 +442,6 @@ namespace AgileSB.Bus
                 properties.ReplyTo = DIRECT_REPLY_QUEUE;
                 properties.CorrelationId = correlationId;
                 properties.Headers = new Dictionary<string, object>();
-                properties.Headers.Add("SendDate", DateTime.Now.ToString(CultureInfo.InvariantCulture));
                 properties.Headers.Add("TraceSpanId", traceSpanId);
                 properties.Headers.Add("TraceId", traceId);
                 properties.Persistent = false;
