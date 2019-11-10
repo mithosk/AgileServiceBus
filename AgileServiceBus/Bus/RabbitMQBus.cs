@@ -3,6 +3,7 @@ using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
 using AgileSB.Logging;
+using AgileServiceBus.Enums;
 using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
@@ -242,6 +243,20 @@ namespace AgileSB.Bus
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
                             responseWrapper = new ResponseWrapper<object>(await subscriber.RespondAsync(request));
                         }
+
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = args.BasicProperties.MessageId,
+                            CorrelationId = args.BasicProperties.CorrelationId,
+                            Type = MessageType.Request,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TRequest).Name,
+                            Body = message,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = null,
+                            ToRetry = false
+                        });
                     },
                     async (exception, retryIndex, retryLimit) =>
                     {
