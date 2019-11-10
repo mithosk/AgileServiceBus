@@ -354,9 +354,10 @@ namespace AgileSB.Bus
             {
                 Task.Factory.StartNew(async () =>
                 {
+                    string messageBody = Encoding.UTF8.GetString(args.Body);
+
                     try
                     {
-                        string messageBody = Encoding.UTF8.GetString(args.Body);
                         TEvent messageEvent = _jsonConverter.Deserialize<TEvent>(messageBody);
                         if (validator != null)
                             await validator.ValidateAndThrowAsync(messageEvent, (directory + "." + subdirectory + "." + typeof(TEvent).Name + " is not valid"));
@@ -388,17 +389,34 @@ namespace AgileSB.Bus
                     }
                     catch (Exception exception)
                     {
+                        bool toRetry = false;
                         ushort retryIndex = ushort.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"]));
-                        if (retryHandler.IsForRetry(exception) && !String.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
+                        if (retryHandler.IsForRetry(exception) && !string.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
                         {
                             IBasicProperties properties = _deadLetterQueueChannel.CreateBasicProperties();
                             properties.MessageId = args.BasicProperties.MessageId;
-                            properties.AppId = _appId;
+                            properties.AppId = args.BasicProperties.AppId;
                             properties.Headers = new Dictionary<string, object>();
                             properties.Headers.Add("RetryIndex", (++retryIndex).ToString());
                             properties.Persistent = true;
                             _deadLetterQueueChannel.BasicPublish(DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey, properties, args.Body);
+
+                            toRetry = true;
                         }
+
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = args.BasicProperties.MessageId,
+                            CorrelationId = null,
+                            Type = MessageType.Event,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TEvent).Name,
+                            Body = messageBody,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = exception,
+                            ToRetry = toRetry
+                        });
                     }
 
                     //acknowledgment
