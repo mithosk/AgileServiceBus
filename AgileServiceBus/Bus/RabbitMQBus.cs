@@ -68,10 +68,10 @@ namespace AgileSB.Bus
 
             //creates the connection
             ConnectionFactory connectionFactory = new ConnectionFactory();
-            connectionFactory.HostName = settings["HostName"];
-            connectionFactory.VirtualHost = "/";
-            connectionFactory.Port = Int32.Parse(settings["Port"]);
-            connectionFactory.UserName = settings["UserName"];
+            connectionFactory.HostName = settings["Host"];
+            connectionFactory.VirtualHost = settings["VHost"];
+            connectionFactory.Port = int.Parse(settings["Port"]);
+            connectionFactory.UserName = settings["User"];
             connectionFactory.Password = settings["Password"];
             connectionFactory.AutomaticRecoveryEnabled = true;
             _connection = connectionFactory.CreateConnection();
@@ -139,7 +139,7 @@ namespace AgileSB.Bus
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            return await RequestAsync<TResponse>(request, null, null);
+            return await RequestAsync<TResponse>(request, "", "");
         }
 
         public async Task RequestAsync(object message)
@@ -234,7 +234,7 @@ namespace AgileSB.Bus
                             await validator.ValidateAndThrowAsync(messageRequest, (directory + "." + subdirectory + "." + messageRequest.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
-                        using (ITraceScope traceScope = (traceSpanId != null && traceId != null) ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer))
+                        using (ITraceScope traceScope = (traceSpanId != "" && traceId != "") ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
