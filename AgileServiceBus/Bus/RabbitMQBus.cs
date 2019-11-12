@@ -2,7 +2,6 @@
 using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
-using AgileSB.Logging;
 using AgileServiceBus.Enums;
 using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
