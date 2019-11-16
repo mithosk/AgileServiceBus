@@ -22,8 +22,8 @@ public class MyEventHandler : IEventHandler<MyEvent>
 }
 ```
 ```csharp
-IRegistrationBus rbus = new RabbitMQBus("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=mmm");
-rbus.Subscribe<MyEventHandler, MyEvent>(null, null, null, null);
+IMicroserviceLifetime ml = new RabbitMQBus("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=mmm");
+ml.Subscribe<MyEventHandler, MyEvent>(null, null, null, null);
 ```
 
 
@@ -52,8 +52,8 @@ public class MyRequestResponder : IResponder<MyRequest>
 }
 ```
 ```csharp
-rbus.Subscribe<MyRequestResponder, MyRequest>(null);
-rbus.RegistrationCompleted();
+ml.Subscribe<MyRequestResponder, MyRequest>(null);
+ml.RegistrationCompleted();
 ```
 
 
