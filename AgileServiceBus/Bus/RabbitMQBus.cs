@@ -28,7 +28,7 @@ namespace AgileSB.Bus
     {
         private const ushort RESPONDER_PREFETCHCOUNT = 30;
         private const ushort EVENT_HANDLER_PREFETCHCOUNT = 8;
-        private const ushort REQUEST_TIMEOUT = 7000;
+        private const ushort REQUEST_TIMEOUT = 15000;
         private const int DEAD_LETTER_QUEUE_RECOVERY_LIMIT = 1000;
         private const ushort MIN_RETRY_DELAY = 1;
         private const ushort MAX_RETRY_DELAY = 250;
@@ -206,7 +206,7 @@ namespace AgileSB.Bus
             string routingKey = typeof(TRequest).Name.ToLower();
             string queue = _appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower();
             _responderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
-            _responderChannel.QueueDeclare(queue, true, false, false, null);
+            _responderChannel.QueueDeclare(queue, true, false, false, new Dictionary<string, object> { { "x-message-ttl", (int)REQUEST_TIMEOUT } });
             _responderChannel.QueueBind(queue, exchange, routingKey);
 
             //request listener
