@@ -59,7 +59,7 @@ namespace AgileSB.Bus
         private Tracer _tracer;
         private JsonConverter _jsonConverter;
 
-        public ContainerBuilder Container { get; }
+        public ContainerBuilder Injection { get; }
 
         public RabbitMQBus(string connectionString)
         {
@@ -88,7 +88,7 @@ namespace AgileSB.Bus
             _appId = settings["AppId"];
 
             //builder for container
-            Container = new ContainerBuilder();
+            Injection = new ContainerBuilder();
 
             //response queue
             _responseQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
@@ -194,7 +194,7 @@ namespace AgileSB.Bus
         public IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IResponder<TRequest> where TRequest : class
         {
             //subscriber registration in a container
-            Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+            Injection.RegisterType<TSubscriber>().InstancePerLifetimeScope();
 
             //retry handler
             IRetry retryHandler = new RetryHandler(MIN_RETRY_DELAY, MAX_RETRY_DELAY, RETRY_LIMIT, true);
@@ -323,7 +323,7 @@ namespace AgileSB.Bus
                 CheckQueueNaming(tag, "Invalid tag");
 
             //subscriber registration in a container
-            Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+            Injection.RegisterType<TSubscriber>().InstancePerLifetimeScope();
 
             //retry handler
             IRetry retryHandler = new RetryHandler(0, 0, 0, false);
@@ -482,9 +482,9 @@ namespace AgileSB.Bus
             TaskScheduler.Default);
         }
 
-        public void RegistrationCompleted()
+        public void Startup()
         {
-            _container = Container.Build();
+            _container = Injection.Build();
 
             _logger = (Logger)Activator.CreateInstance(_loggerType);
             _tracer = (Tracer)Activator.CreateInstance(_tracerType);

@@ -2,5 +2,5 @@
 
 namespace AgileSB.Interfaces
 {
-    public interface IBus : IGatewayBus, IMicroserviceBus, IRegistrationBus, ISchedulerBus { }
+    public interface IBus : IGatewayBus, IMicroserviceBus, IMicroserviceLifetime, ISchedulerBus { }
 }
