@@ -53,7 +53,7 @@ public class MyRequestResponder : IResponder<MyRequest>
 ```
 ```csharp
 ml.Subscribe<MyRequestResponder, MyRequest>(null);
-ml.RegistrationCompleted();
+ml.Startup();
 ```
 
 
