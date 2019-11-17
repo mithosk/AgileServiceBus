@@ -64,7 +64,7 @@ ml.Startup();
 IGatewayBus gbus = new RabbitMQDriver("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=ggg");
 ```
 ```csharp
-MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest() 
+MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest()
 { 
     Lion = 5, 
     Crocodile = DateTime.UtcNow,
