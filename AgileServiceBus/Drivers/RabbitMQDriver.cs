@@ -206,7 +206,7 @@ namespace AgileSB.Drivers
             string routingKey = typeof(TRequest).Name.ToLower();
             string queue = _appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower();
             _responderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
-            _responderChannel.QueueDeclare(queue, true, false, false, new Dictionary<string, object> { { "x-message-ttl", (int)REQUEST_TIMEOUT } });
+            _responderChannel.QueueDeclare(queue, true, false, false, new Dictionary<string, object> { { "x-message-ttl", (int)REQUEST_TIMEOUT }, { "x-queue-mode", "default" } });
             _responderChannel.QueueBind(queue, exchange, routingKey);
 
             //request listener
@@ -337,14 +337,14 @@ namespace AgileSB.Drivers
             string queue = _appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TEvent).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : "");
             _eventHandlerChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
             _eventHandlerChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
-            _eventHandlerChannel.QueueDeclare(queue, true, false, false, null);
+            _eventHandlerChannel.QueueDeclare(queue, true, false, false, new Dictionary<string, object> { { "x-queue-mode", "lazy" } });
             _eventHandlerChannel.QueueBind(queue, exchange, routingKey);
             _eventHandlerChannel.QueueBind(queue, DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey);
 
             //creates dead letter queue
             string deadLetterQueue = (queue + "-dlq");
             string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq");
-            _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
+            _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, new Dictionary<string, object> { { "x-queue-mode", "lazy" } });
             _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
             //message listener
