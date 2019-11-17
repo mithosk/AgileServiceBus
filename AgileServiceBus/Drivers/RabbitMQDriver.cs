@@ -22,9 +22,9 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AgileSB.Bus
+namespace AgileSB.Drivers
 {
-    public class RabbitMQBus : IBus
+    public class RabbitMQDriver : IDriver
     {
         private const ushort RESPONDER_PREFETCHCOUNT = 30;
         private const ushort EVENT_HANDLER_PREFETCHCOUNT = 8;
@@ -61,7 +61,7 @@ namespace AgileSB.Bus
 
         public ContainerBuilder Injection { get; }
 
-        public RabbitMQBus(string connectionString)
+        public RabbitMQDriver(string connectionString)
         {
             Dictionary<string, string> settings = connectionString.ParseAsConnectionString();
 
