@@ -22,7 +22,7 @@ public class MyEventHandler : IEventHandler<MyEvent>
 }
 ```
 ```csharp
-IMicroserviceLifetime ml = new RabbitMQBus("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=mmm");
+IMicroserviceLifetime ml = new RabbitMQDriver("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=mmm");
 ml.Subscribe<MyEventHandler, MyEvent>(null, null, null, null);
 ```
 
@@ -61,7 +61,7 @@ ml.Startup();
 ### ... how to make a GATEWAY rpc request ...
 
 ```csharp
-IGatewayBus gbus = new RabbitMQBus("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=ggg");
+IGatewayBus gbus = new RabbitMQDriver("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=ggg");
 ```
 ```csharp
 MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest() 
@@ -77,7 +77,7 @@ MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest()
 ### ... how to create a message SCHEDULER ...
 
 ```csharp
-ISchedulerBus sbus = new RabbitMQBus("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=sss");
+ISchedulerBus sbus = new RabbitMQDriver("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=sss");
 ```
 ```csharp
 sbus.Schedule("* * * * *", () =>
