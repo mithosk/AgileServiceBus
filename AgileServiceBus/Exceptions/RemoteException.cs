@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace AgileSB.Exceptions
+namespace AgileServiceBus.Exceptions
 {
     public class RemoteException : Exception
     {

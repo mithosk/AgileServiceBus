@@ -75,7 +75,7 @@ namespace AgileServiceBus.Utilities
                 {
                     bool isForRetry = IsForRetry(exception);
 
-                    await error(exception, retryIndex, (isForRetry ? _retryLimit : retryIndex));
+                    await error(exception, retryIndex, isForRetry ? _retryLimit : retryIndex);
 
                     if (!isForRetry)
                         break;

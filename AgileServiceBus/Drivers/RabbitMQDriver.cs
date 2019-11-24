@@ -1,11 +1,12 @@
 ﻿using AgileSB.Attributes;
-using AgileSB.DTO;
 using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileSB.Interfaces;
-using AgileSB.Log;
+using AgileServiceBus.Enums;
+using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
 using AgileServiceBus.Interfaces;
+using AgileServiceBus.Logging;
 using AgileServiceBus.Tracing;
 using AgileServiceBus.Utilities;
 using Autofac;
@@ -21,13 +22,13 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AgileSB.Bus
+namespace AgileSB.Drivers
 {
-    public class RabbitMQBus : IBus
+    public class RabbitMQDriver : IDriver
     {
         private const ushort RESPONDER_PREFETCHCOUNT = 30;
         private const ushort EVENT_HANDLER_PREFETCHCOUNT = 8;
-        private const ushort REQUEST_TIMEOUT = 7000;
+        private const ushort REQUEST_TIMEOUT = 15000;
         private const int DEAD_LETTER_QUEUE_RECOVERY_LIMIT = 1000;
         private const ushort MIN_RETRY_DELAY = 1;
         private const ushort MAX_RETRY_DELAY = 250;
@@ -45,29 +46,31 @@ namespace AgileSB.Bus
         private IModel _eventHandlerChannel;
         private IModel _deadLetterQueueChannel;
         private string _appId;
-        private MessageGroupQueue _responsesQueue;
+        private MessageGroupQueue _responseQueue;
         private IContainer _container;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _sendTaskScheduler;
         private MultiThreadTaskScheduler _receiveTaskScheduler;
         private MultiThreadTaskScheduler _deadLetterQueueTaskScheduler;
         private CancellationTokenSource _cancellationTokenSource;
+        private Type _loggerType;
+        private Logger _logger;
         private Type _tracerType;
         private Tracer _tracer;
+        private JsonConverter _jsonConverter;
 
-        public ILogger Logger { get; set; }
-        public ContainerBuilder Container { get; }
+        public ContainerBuilder Injection { get; }
 
-        public RabbitMQBus(string connectionString)
+        public RabbitMQDriver(string connectionString)
         {
             Dictionary<string, string> settings = connectionString.ParseAsConnectionString();
 
             //creates the connection
             ConnectionFactory connectionFactory = new ConnectionFactory();
-            connectionFactory.HostName = settings["HostName"];
-            connectionFactory.VirtualHost = "/";
-            connectionFactory.Port = Int32.Parse(settings["Port"]);
-            connectionFactory.UserName = settings["UserName"];
+            connectionFactory.HostName = settings["Host"];
+            connectionFactory.VirtualHost = settings["VHost"];
+            connectionFactory.Port = int.Parse(settings["Port"]);
+            connectionFactory.UserName = settings["User"];
             connectionFactory.Password = settings["Password"];
             connectionFactory.AutomaticRecoveryEnabled = true;
             _connection = connectionFactory.CreateConnection();
@@ -85,16 +88,16 @@ namespace AgileSB.Bus
             _appId = settings["AppId"];
 
             //builder for container
-            Container = new ContainerBuilder();
+            Injection = new ContainerBuilder();
 
             //response queue
-            _responsesQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
+            _responseQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
 
             //response listener         
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestChannel);
             consumer.Received += (obj, args) =>
             {
-                _responsesQueue.AddMessage(Encoding.UTF8.GetString(args.Body), args.BasicProperties.CorrelationId);
+                _responseQueue.AddMessage(Encoding.UTF8.GetString(args.Body), args.BasicProperties.CorrelationId);
             };
 
             _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
@@ -113,8 +116,19 @@ namespace AgileSB.Bus
             //cancellation token
             _cancellationTokenSource = new CancellationTokenSource();
 
+            //default logger
+            _loggerType = typeof(DefaultLogger);
+
             //default tracer
             _tracerType = typeof(DefaultTracer);
+
+            //json converter
+            _jsonConverter = new JsonConverter();
+        }
+
+        public void RegisterLogger<TLogger>() where TLogger : Logger
+        {
+            _loggerType = typeof(TLogger);
         }
 
         public void RegisterTracer<TTracer>() where TTracer : Tracer
@@ -124,7 +138,7 @@ namespace AgileSB.Bus
 
         public async Task<TResponse> RequestAsync<TResponse>(object request)
         {
-            return await RequestAsync<TResponse>(request, null, null);
+            return await RequestAsync<TResponse>(request, "", "");
         }
 
         public async Task RequestAsync(object message)
@@ -132,13 +146,13 @@ namespace AgileSB.Bus
             await RequestAsync<object>(message);
         }
 
-        public async Task<TResponse> RequestAsync<TResponse>(object request, ITraceScope traceScope)
+        public async Task<TResponse> RequestAsync<TResponse>(object message, ITraceScope traceScope)
         {
-            string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = message.GetType().GetCustomAttribute<QueueConfig>().Directory;
+            string subdirectory = message.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
 
-            using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + request.GetType().Name))
-                return await RequestAsync<TResponse>(request, traceSubScope.SpanId, traceSubScope.TraceId);
+            using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + message.GetType().Name))
+                return await RequestAsync<TResponse>(message, traceSubScope.SpanId, traceSubScope.TraceId);
         }
 
         public async Task RequestAsync(object message, ITraceScope traceScope)
@@ -156,8 +170,8 @@ namespace AgileSB.Bus
             //message direction
             string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : ""));
+            string exchange = "event_" + directory.ToLower() + "_" + subdirectory.ToLower();
+            string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "");
 
             //message publishing
             await Task.Factory.StartNew(() =>
@@ -168,10 +182,9 @@ namespace AgileSB.Bus
                 properties.MessageId = Guid.NewGuid().ToString();
                 properties.AppId = _appId;
                 properties.Headers = new Dictionary<string, object>();
-                properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
-                properties.Headers.Add("RetryIndex", 0.Serialize());
+                properties.Headers.Add("RetryIndex", "0");
                 properties.Persistent = true;
-                _notifyChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(message.Serialize()));
+                _notifyChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(_jsonConverter.Serialize(message)));
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
@@ -181,7 +194,7 @@ namespace AgileSB.Bus
         public IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IResponder<TRequest> where TRequest : class
         {
             //subscriber registration in a container
-            Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+            Injection.RegisterType<TSubscriber>().InstancePerLifetimeScope();
 
             //retry handler
             IRetry retryHandler = new RetryHandler(MIN_RETRY_DELAY, MAX_RETRY_DELAY, RETRY_LIMIT, true);
@@ -189,11 +202,11 @@ namespace AgileSB.Bus
             //creates queue and exchange
             string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string exchange = "request_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = typeof(TRequest).Name.ToLower();
-            string queue = (_appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower());
+            string queue = _appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower();
             _responderChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
-            _responderChannel.QueueDeclare(queue, true, false, false, null);
+            _responderChannel.QueueDeclare(queue, true, false, false, new Dictionary<string, object> { { "x-message-ttl", (int)REQUEST_TIMEOUT }, { "x-queue-mode", "default" } });
             _responderChannel.QueueBind(queue, exchange, routingKey);
 
             //request listener
@@ -202,54 +215,92 @@ namespace AgileSB.Bus
             {
                 Task.Factory.StartNew(async () =>
                 {
-                    await LogOnRequest(queue, args);
-
                     //request message
-                    string message = Encoding.UTF8.GetString(args.Body);
+                    string messageBody = Encoding.UTF8.GetString(args.Body);
 
                     //tracing data
-                    string traceSpanId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"])).Deserialize<string>();
-                    string traceId = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"])).Deserialize<string>();
+                    string traceSpanId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"]);
+                    string traceId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceId"]);
                     string traceDisplayName = "Respond-" + directory + "." + subdirectory + "." + typeof(TRequest).Name;
 
                     //response action
-                    Response<object> response = new Response<object>();
+                    ResponseWrapper<object> responseWrapper = null;
 
                     await retryHandler.ExecuteAsync(async () =>
                     {
-                        TRequest request = message.Deserialize<TRequest>();
+                        TRequest messageRequest = _jsonConverter.Deserialize<TRequest>(messageBody);
                         if (validator != null)
-                            await validator.ValidateAndThrowAsync(request, (directory + "." + subdirectory + "." + request.GetType().Name + " is not valid"));
+                            await validator.ValidateAndThrowAsync(messageRequest, (directory + "." + subdirectory + "." + messageRequest.GetType().Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
-                        using (ITraceScope traceScope = ((traceSpanId != null && traceId != null) ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer)))
+                        using (ITraceScope traceScope = (traceSpanId != "" && traceId != "") ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer))
                         {
                             TSubscriber subscriber = container.Resolve<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
-                            response.Data = await subscriber.RespondAsync(request);
+                            responseWrapper = new ResponseWrapper<object>(await subscriber.RespondAsync(messageRequest));
                         }
+
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = args.BasicProperties.MessageId,
+                            CorrelationId = args.BasicProperties.CorrelationId,
+                            Type = MessageType.Request,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TRequest).Name,
+                            Body = messageBody,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = null,
+                            ToRetry = false
+                        });
                     },
                     async (exception, retryIndex, retryLimit) =>
                     {
-                        await LogOnResponseError(queue, args, exception, retryIndex, retryLimit);
-                        response.ExceptionCode = exception.GetType().Name.Replace("Exception", "");
-                        response.ExceptionMessage = exception.Message;
+                        responseWrapper = new ResponseWrapper<object>(exception);
+
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = args.BasicProperties.MessageId,
+                            CorrelationId = args.BasicProperties.CorrelationId,
+                            Type = MessageType.Request,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TRequest).Name,
+                            Body = messageBody,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = exception,
+                            ToRetry = retryIndex != retryLimit
+                        });
+
+                        await Task.CompletedTask;
                     });
 
                     //response message
                     if (typeof(TSubscriber).GetMethod("RespondAsync").GetCustomAttribute<FakeResponse>() == null)
                     {
-                        message = response.Serialize();
+                        messageBody = _jsonConverter.Serialize(responseWrapper);
                         IBasicProperties properties = _responderChannel.CreateBasicProperties();
                         properties.MessageId = Guid.NewGuid().ToString();
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
-                        _responderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(message));
+                        _responderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(messageBody));
 
-                        await LogOnResponse(queue, message, args);
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = properties.MessageId,
+                            CorrelationId = properties.CorrelationId,
+                            Type = MessageType.Response,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TRequest).Name,
+                            Body = messageBody,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = null,
+                            ToRetry = false
+                        });
                     }
 
                     //acknowledgment
@@ -272,7 +323,7 @@ namespace AgileSB.Bus
                 CheckQueueNaming(tag, "Invalid tag");
 
             //subscriber registration in a container
-            Container.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+            Injection.RegisterType<TSubscriber>().InstancePerLifetimeScope();
 
             //retry handler
             IRetry retryHandler = new RetryHandler(0, 0, 0, false);
@@ -280,20 +331,20 @@ namespace AgileSB.Bus
             //creates queue and exchanges
             string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("event_" + directory.ToLower() + "_" + subdirectory.ToLower());
-            string routingKey = (typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*"));
-            string restoreRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : ""));
-            string queue = (_appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TEvent).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : ""));
+            string exchange = "event_" + directory.ToLower() + "_" + subdirectory.ToLower();
+            string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*");
+            string restoreRoutingKey = _appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "");
+            string queue = _appId.ToLower() + "-event-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TEvent).Name.ToLower() + (tag != null ? ("-" + tag.ToLower()) : "");
             _eventHandlerChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
             _eventHandlerChannel.ExchangeDeclare(DEAD_LETTER_QUEUE_EXCHANGE, ExchangeType.Direct, true, false);
-            _eventHandlerChannel.QueueDeclare(queue, true, false, false, null);
+            _eventHandlerChannel.QueueDeclare(queue, true, false, false, new Dictionary<string, object> { { "x-queue-mode", "lazy" } });
             _eventHandlerChannel.QueueBind(queue, exchange, routingKey);
             _eventHandlerChannel.QueueBind(queue, DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey);
 
             //creates dead letter queue
             string deadLetterQueue = (queue + "-dlq");
             string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq");
-            _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, null);
+            _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, new Dictionary<string, object> { { "x-queue-mode", "lazy" } });
             _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
             //message listener
@@ -302,13 +353,13 @@ namespace AgileSB.Bus
             {
                 Task.Factory.StartNew(async () =>
                 {
-                    await LogOnPublish(queue, args);
+                    string messageBody = Encoding.UTF8.GetString(args.Body);
 
                     try
                     {
-                        TEvent message = Encoding.UTF8.GetString(args.Body).Deserialize<TEvent>();
+                        TEvent messageEvent = _jsonConverter.Deserialize<TEvent>(messageBody);
                         if (validator != null)
-                            await validator.ValidateAndThrowAsync(message, (directory + "." + subdirectory + "." + message.GetType().Name + " is not valid"));
+                            await validator.ValidateAndThrowAsync(messageEvent, (directory + "." + subdirectory + "." + typeof(TEvent).Name + " is not valid"));
 
                         using (ILifetimeScope container = _container.BeginLifetimeScope())
                         using (ITraceScope traceScope = new TraceScope("Handle-" + directory + "." + subdirectory + "." + typeof(TEvent).Name, _tracer))
@@ -318,27 +369,53 @@ namespace AgileSB.Bus
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
                             traceScope.Attributes.Add("MessageId", args.BasicProperties.MessageId);
-                            await subscriber.HandleAsync(message);
+                            await subscriber.HandleAsync(messageEvent);
                         }
 
-                        await LogOnConsumed(queue, args);
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = args.BasicProperties.MessageId,
+                            CorrelationId = null,
+                            Type = MessageType.Event,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TEvent).Name,
+                            Body = messageBody,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = null,
+                            ToRetry = false
+                        });
                     }
                     catch (Exception exception)
                     {
-                        await LogOnConsumeError(queue, args, exception, retryLimit);
-
-                        ushort retryIndex = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"])).Deserialize<ushort>();
-                        if (retryHandler.IsForRetry(exception) && !String.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
+                        bool toRetry = false;
+                        ushort retryIndex = ushort.Parse(Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"]));
+                        if (retryHandler.IsForRetry(exception) && !string.IsNullOrEmpty(retryCron) && retryLimit != null && retryIndex < retryLimit)
                         {
                             IBasicProperties properties = _deadLetterQueueChannel.CreateBasicProperties();
                             properties.MessageId = args.BasicProperties.MessageId;
-                            properties.AppId = _appId;
+                            properties.AppId = args.BasicProperties.AppId;
                             properties.Headers = new Dictionary<string, object>();
-                            properties.Headers.Add("SendDate", DateTime.UtcNow.Serialize());
-                            properties.Headers.Add("RetryIndex", (++retryIndex).Serialize());
+                            properties.Headers.Add("RetryIndex", (++retryIndex).ToString());
                             properties.Persistent = true;
                             _deadLetterQueueChannel.BasicPublish(DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey, properties, args.Body);
+
+                            toRetry = true;
                         }
+
+                        _logger.Send(new MessageDetail
+                        {
+                            Id = args.BasicProperties.MessageId,
+                            CorrelationId = null,
+                            Type = MessageType.Event,
+                            Directory = directory,
+                            Subdirectory = subdirectory,
+                            Name = typeof(TEvent).Name,
+                            Body = messageBody,
+                            AppId = args.BasicProperties.AppId,
+                            Exception = exception,
+                            ToRetry = toRetry
+                        });
                     }
 
                     //acknowledgment
@@ -405,10 +482,11 @@ namespace AgileSB.Bus
             TaskScheduler.Default);
         }
 
-        public void RegistrationCompleted()
+        public void Startup()
         {
-            _container = Container.Build();
+            _container = Injection.Build();
 
+            _logger = (Logger)Activator.CreateInstance(_loggerType);
             _tracer = (Tracer)Activator.CreateInstance(_tracerType);
 
             foreach (Tuple<IModel, string, EventingBasicConsumer> toActivateConsumer in _toActivateConsumers)
@@ -420,7 +498,7 @@ namespace AgileSB.Bus
             //message direction
             string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
-            string exchange = ("request_" + directory.ToLower() + "_" + subdirectory.ToLower());
+            string exchange = "request_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = request.GetType().Name.ToLower();
 
             //correlation
@@ -431,7 +509,7 @@ namespace AgileSB.Bus
             {
                 _requestChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
 
-                _responsesQueue.AddGroup(correlationId);
+                _responseQueue.AddGroup(correlationId);
 
                 IBasicProperties properties = _requestChannel.CreateBasicProperties();
                 properties.MessageId = Guid.NewGuid().ToString();
@@ -439,42 +517,41 @@ namespace AgileSB.Bus
                 properties.ReplyTo = DIRECT_REPLY_QUEUE;
                 properties.CorrelationId = correlationId;
                 properties.Headers = new Dictionary<string, object>();
-                properties.Headers.Add("SendDate", DateTimeOffset.Now.Serialize());
-                properties.Headers.Add("TraceSpanId", traceSpanId.Serialize());
-                properties.Headers.Add("TraceId", traceId.Serialize());
+                properties.Headers.Add("TraceSpanId", traceSpanId);
+                properties.Headers.Add("TraceId", traceId);
                 properties.Persistent = false;
-                _requestChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(request.Serialize()));
+                _requestChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(_jsonConverter.Serialize(request)));
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
             _sendTaskScheduler);
 
             //response object
-            Response<TResponse> response = null;
+            ResponseWrapper<TResponse> responseWrapper = null;
 
             //waiting response
             await Task.Factory.StartNew(() =>
             {
-                string message = _responsesQueue.WaitMessage(correlationId);
-                if (message != null)
-                    response = message.Deserialize<Response<TResponse>>();
+                string messageBody = _responseQueue.WaitMessage(correlationId);
+                if (messageBody != null)
+                    responseWrapper = _jsonConverter.Deserialize<ResponseWrapper<TResponse>>(messageBody);
 
-                _responsesQueue.RemoveGroup(correlationId);
+                _responseQueue.RemoveGroup(correlationId);
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
             _receiveTaskScheduler);
 
             //timeout
-            if (response == null)
+            if (responseWrapper == null)
                 throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
 
             //remote error
-            if (response.ExceptionCode != null)
-                throw (new RemoteException(response.ExceptionCode, response.ExceptionMessage));
+            if (responseWrapper.ExceptionCode != null)
+                throw new RemoteException(responseWrapper.ExceptionCode, responseWrapper.ExceptionMessage);
 
             //response
-            return response.Data;
+            return responseWrapper.Response;
         }
 
         private void CheckQueueNaming(string word, string exceptionMessage)
@@ -492,102 +569,6 @@ namespace AgileSB.Bus
                 case "event":
                 case "dlq":
                     throw new QueueNamingException(exceptionMessage);
-            }
-        }
-
-        private async Task LogOnConsumed(string queueName, BasicDeliverEventArgs args)
-        {
-            if (Logger != null)
-            {
-                OnConsumed data = new OnConsumed();
-                data.QueueName = queueName;
-                data.Message = Encoding.UTF8.GetString(args.Body);
-                data.MessageId = args.BasicProperties.MessageId;
-                data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnConsumeError(string queueName, BasicDeliverEventArgs args, Exception exception, ushort? retryLimit)
-        {
-            if (Logger != null)
-            {
-                OnConsumeError data = new OnConsumeError();
-                data.QueueName = queueName;
-                data.Message = Encoding.UTF8.GetString(args.Body);
-                data.MessageId = args.BasicProperties.MessageId;
-                data.Exception = exception;
-                data.RetryIndex = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["RetryIndex"])).Deserialize<uint>();
-                data.RetryLimit = retryLimit;
-                data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnPublish(string queueName, BasicDeliverEventArgs args)
-        {
-            if (Logger != null)
-            {
-                OnPublish data = new OnPublish();
-                data.QueueName = queueName;
-                data.Message = Encoding.UTF8.GetString(args.Body);
-                data.MessageId = args.BasicProperties.MessageId;
-                data.PublisherAppId = args.BasicProperties.AppId;
-                data.PublishDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnRequest(string queueName, BasicDeliverEventArgs args)
-        {
-            if (Logger != null)
-            {
-                OnRequest data = new OnRequest();
-                data.QueueName = queueName;
-                data.Request = Encoding.UTF8.GetString(args.Body);
-                data.CorrelationId = args.BasicProperties.CorrelationId;
-                data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnResponse(string queueName, string response, BasicDeliverEventArgs args)
-        {
-            if (Logger != null)
-            {
-                OnResponse data = new OnResponse();
-                data.RequestQueueName = queueName;
-                data.Response = response;
-                data.CorrelationId = args.BasicProperties.CorrelationId;
-                data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
-
-                await Logger.LogAsync(data);
-            }
-        }
-
-        private async Task LogOnResponseError(string queueName, BasicDeliverEventArgs args, Exception exception, ushort retryIndex, ushort retryLimit)
-        {
-            if (Logger != null)
-            {
-                OnResponseError data = new OnResponseError();
-                data.RequestQueueName = queueName;
-                data.Request = Encoding.UTF8.GetString(args.Body);
-                data.CorrelationId = args.BasicProperties.CorrelationId;
-                data.Exception = exception;
-                data.RetryIndex = retryIndex;
-                data.RetryLimit = retryLimit;
-                data.RequesterAppId = args.BasicProperties.AppId;
-                data.RequestDate = (Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["SendDate"])).Deserialize<DateTime>();
-
-                await Logger.LogAsync(data);
             }
         }
 
@@ -616,7 +597,10 @@ namespace AgileSB.Bus
 
             _connection.Dispose();
 
-            _responsesQueue.Dispose();
+            _responseQueue.Dispose();
+
+            if (_logger != null)
+                _logger.Dispose();
 
             if (_tracer != null)
                 _tracer.Dispose();

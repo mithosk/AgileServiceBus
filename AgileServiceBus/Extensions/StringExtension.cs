@@ -1,9 +1,5 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Serialization;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 
 namespace AgileSB.Extensions
 {
@@ -24,21 +20,7 @@ namespace AgileSB.Extensions
                 settings.Add(key, value);
             }
 
-            return (settings);
-        }
-
-        public static T Deserialize<T>(this String str)
-        {
-            JsonSerializerSettings settings = new JsonSerializerSettings();
-            settings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-            settings.Converters.Add(new StringEnumConverter() { NamingStrategy = new CamelCaseNamingStrategy(), AllowIntegerValues = false });
-            settings.DateFormatHandling = DateFormatHandling.IsoDateFormat;
-            settings.Culture = CultureInfo.InvariantCulture;
-            settings.NullValueHandling = NullValueHandling.Ignore;
-
-            T result = JsonConvert.DeserializeObject<T>(str, settings);
-
-            return (result);
+            return settings;
         }
     }
 }
