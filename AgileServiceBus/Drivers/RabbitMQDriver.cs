@@ -38,6 +38,8 @@ namespace AgileSB.Drivers
         private const byte SEND_NUMBER_OF_THREADS = 4;
         private const byte RECEIVE_NUMBER_OF_THREADS = 16;
         private const byte DEAD_LETTER_QUEUE_NUMBER_OF_THREADS = 1;
+        private const ushort CACHE_LIMIT = 5000;
+        private readonly TimeSpan CACHE_DURATION = new TimeSpan(2, 30, 0);
 
         private IConnection _connection;
         private IModel _requestChannel;
@@ -58,6 +60,7 @@ namespace AgileSB.Drivers
         private Type _tracerType;
         private Tracer _tracer;
         private JsonConverter _jsonConverter;
+        private CacheHandler _cacheHandler;
 
         public ContainerBuilder Injection { get; }
 
@@ -124,6 +127,9 @@ namespace AgileSB.Drivers
 
             //json converter
             _jsonConverter = new JsonConverter();
+
+            //cache handler
+            _cacheHandler = new CacheHandler(CACHE_LIMIT, CACHE_DURATION);
         }
 
         public void RegisterLogger<TLogger>() where TLogger : Logger
@@ -495,6 +501,16 @@ namespace AgileSB.Drivers
 
         private async Task<TResponse> RequestAsync<TResponse>(object request, string traceSpanId, string traceId)
         {
+            //get from cache
+            ICacheable cacheable = request as ICacheable;
+            string cacheKey = cacheable.GetType().FullName + "." + cacheable.CreateKey();
+            if (cacheable != null)
+            {
+                TResponse cached = _cacheHandler.Get<TResponse>(cacheKey);
+                if (cached != null)
+                    return cached;
+            }
+
             //message direction
             string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
             string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
@@ -544,11 +560,15 @@ namespace AgileSB.Drivers
 
             //timeout
             if (responseWrapper == null)
-                throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
+                throw new TimeoutException(request.GetType().Name + " did Not Respond");
 
             //remote error
             if (responseWrapper.ExceptionCode != null)
                 throw new RemoteException(responseWrapper.ExceptionCode, responseWrapper.ExceptionMessage);
+
+            //add to cache
+            if (cacheable != null)
+                _cacheHandler.Set(cacheKey, responseWrapper.Response);
 
             //response
             return responseWrapper.Response;
