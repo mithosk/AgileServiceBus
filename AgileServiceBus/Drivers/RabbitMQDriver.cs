@@ -502,9 +502,8 @@ namespace AgileSB.Drivers
         private async Task<TResponse> RequestAsync<TResponse>(object request, string traceSpanId, string traceId)
         {
             //get from cache
-            ICacheable cacheable = request as ICacheable;
-            string cacheKey = cacheable.GetType().FullName + "." + cacheable.CreateKey();
-            if (cacheable != null)
+            ICacheKey cacheKey = request as ICacheKey;
+            if (cacheKey != null)
             {
                 TResponse cached = _cacheHandler.Get<TResponse>(cacheKey);
                 if (cached != null)
@@ -567,7 +566,7 @@ namespace AgileSB.Drivers
                 throw new RemoteException(responseWrapper.ExceptionCode, responseWrapper.ExceptionMessage);
 
             //add to cache
-            if (cacheable != null)
+            if (cacheKey != null)
                 _cacheHandler.Set(cacheKey, responseWrapper.Response);
 
             //response
