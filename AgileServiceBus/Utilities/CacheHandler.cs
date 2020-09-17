@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Caching.Memory;
+﻿using AgileServiceBus.Interfaces;
+using Microsoft.Extensions.Caching.Memory;
 using System;
 
 namespace AgileServiceBus.Utilities
@@ -18,18 +19,23 @@ namespace AgileServiceBus.Utilities
             _duration = duration;
         }
 
-        public void Set(string key, object toCache)
+        public void Set(ICacheId cacheId, object toCache)
         {
-            _memoryCache.Set(key, toCache, new MemoryCacheEntryOptions
+            _memoryCache.Set(CreateCacheKey(cacheId), toCache, new MemoryCacheEntryOptions
             {
                 Size = 1,
                 AbsoluteExpirationRelativeToNow = _duration
             });
         }
 
-        public TCached Get<TCached>(string key)
+        public TCached Get<TCached>(ICacheId cacheId)
         {
-            return _memoryCache.Get<TCached>(key);
+            return _memoryCache.Get<TCached>(CreateCacheKey(cacheId));
+        }
+
+        private string CreateCacheKey(ICacheId cacheId)
+        {
+            return cacheId.GetType().FullName + "-" + cacheId.CreateCacheSuffix();
         }
     }
 }
