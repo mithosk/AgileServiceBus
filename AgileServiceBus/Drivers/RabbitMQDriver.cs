@@ -506,7 +506,7 @@ namespace AgileSB.Drivers
             if (cacheId != null)
             {
                 TResponse cached = _cacheHandler.Get<TResponse>(cacheId);
-                if (cached != null)
+                if (cached != null && !cached.Equals(default(TResponse)))
                     return cached;
             }
 
