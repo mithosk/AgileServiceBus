@@ -100,7 +100,7 @@ namespace AgileSB.Drivers
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestChannel);
             consumer.Received += (obj, args) =>
             {
-                _responseQueue.AddMessage(Encoding.UTF8.GetString(args.Body), args.BasicProperties.CorrelationId);
+                _responseQueue.AddMessage(Encoding.UTF8.GetString(args.Body.ToArray()), args.BasicProperties.CorrelationId);
             };
 
             _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
@@ -222,7 +222,7 @@ namespace AgileSB.Drivers
                 Task.Factory.StartNew(async () =>
                 {
                     //request message
-                    string messageBody = Encoding.UTF8.GetString(args.Body);
+                    string messageBody = Encoding.UTF8.GetString(args.Body.ToArray());
 
                     //tracing data
                     string traceSpanId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"]);
@@ -348,8 +348,8 @@ namespace AgileSB.Drivers
             _eventHandlerChannel.QueueBind(queue, DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey);
 
             //creates dead letter queue
-            string deadLetterQueue = (queue + "-dlq");
-            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq");
+            string deadLetterQueue = queue + "-dlq";
+            string dlqRoutingKey = _appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq";
             _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, new Dictionary<string, object> { { "x-queue-mode", "lazy" } });
             _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
@@ -359,7 +359,7 @@ namespace AgileSB.Drivers
             {
                 Task.Factory.StartNew(async () =>
                 {
-                    string messageBody = Encoding.UTF8.GetString(args.Body);
+                    string messageBody = Encoding.UTF8.GetString(args.Body.ToArray());
 
                     try
                     {
@@ -559,7 +559,7 @@ namespace AgileSB.Drivers
 
             //timeout
             if (responseWrapper == null)
-                throw new TimeoutException(request.GetType().Name + " did Not Respond");
+                throw new TimeoutException(request.GetType().Name + " did not respond");
 
             //remote error
             if (responseWrapper.ExceptionCode != null)
@@ -595,7 +595,7 @@ namespace AgileSB.Drivers
         {
             CrontabSchedule schedule = CrontabSchedule.Parse(cron);
             DateTime nextDate = schedule.GetNextOccurrence(DateTime.UtcNow);
-            TimeSpan delay = (nextDate - DateTime.UtcNow);
+            TimeSpan delay = nextDate - DateTime.UtcNow;
 
             await Task.Delay(delay);
         }
