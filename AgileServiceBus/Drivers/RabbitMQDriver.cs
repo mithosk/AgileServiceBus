@@ -9,8 +9,8 @@ using AgileServiceBus.Interfaces;
 using AgileServiceBus.Logging;
 using AgileServiceBus.Tracing;
 using AgileServiceBus.Utilities;
-using Autofac;
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 using NCrontab;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -49,7 +49,7 @@ namespace AgileSB.Drivers
         private IModel _deadLetterQueueChannel;
         private string _appId;
         private MessageGroupQueue _responseQueue;
-        private IContainer _container;
+        private IServiceProvider _serviceProvider;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _sendTaskScheduler;
         private MultiThreadTaskScheduler _receiveTaskScheduler;
@@ -62,7 +62,7 @@ namespace AgileSB.Drivers
         private JsonConverter _jsonConverter;
         private CacheHandler _cacheHandler;
 
-        public ContainerBuilder Injection { get; }
+        public IServiceCollection Injection { get; }
 
         public RabbitMQDriver(string connectionString)
         {
@@ -91,7 +91,7 @@ namespace AgileSB.Drivers
             _appId = settings["AppId"];
 
             //builder for container
-            Injection = new ContainerBuilder();
+            Injection = new ServiceCollection();
 
             //response queue
             _responseQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
@@ -105,8 +105,8 @@ namespace AgileSB.Drivers
 
             _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
 
-            //builded container
-            _container = null;
+            //dependency injection container
+            _serviceProvider = null;
 
             //list of to activate consumers
             _toActivateConsumers = new List<Tuple<IModel, string, EventingBasicConsumer>>();
@@ -200,7 +200,7 @@ namespace AgileSB.Drivers
         public IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IResponder<TRequest> where TRequest : class
         {
             //subscriber registration in a container
-            Injection.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+            Injection.AddTransient(typeof(TSubscriber));
 
             //retry handler
             IRetry retryHandler = new RetryHandler(MIN_RETRY_DELAY, MAX_RETRY_DELAY, RETRY_LIMIT, true);
@@ -238,10 +238,10 @@ namespace AgileSB.Drivers
                         if (validator != null)
                             await validator.ValidateAndThrowAsync(messageRequest, (directory + "." + subdirectory + "." + messageRequest.GetType().Name + " is not valid"));
 
-                        using (ILifetimeScope container = _container.BeginLifetimeScope())
+                        using (IServiceScope serviceScope = _serviceProvider.CreateScope())
                         using (ITraceScope traceScope = (traceSpanId != "" && traceId != "") ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer))
                         {
-                            TSubscriber subscriber = container.Resolve<TSubscriber>();
+                            TSubscriber subscriber = serviceScope.ServiceProvider.GetService<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
@@ -329,7 +329,7 @@ namespace AgileSB.Drivers
                 CheckQueueNaming(tag, "Invalid tag");
 
             //subscriber registration in a container
-            Injection.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+            Injection.AddTransient(typeof(TSubscriber));
 
             //retry handler
             IRetry retryHandler = new RetryHandler(0, 0, 0, false);
@@ -367,10 +367,10 @@ namespace AgileSB.Drivers
                         if (validator != null)
                             await validator.ValidateAndThrowAsync(messageEvent, (directory + "." + subdirectory + "." + typeof(TEvent).Name + " is not valid"));
 
-                        using (ILifetimeScope container = _container.BeginLifetimeScope())
+                        using (IServiceScope serviceScope = _serviceProvider.CreateScope())
                         using (ITraceScope traceScope = new TraceScope("Handle-" + directory + "." + subdirectory + "." + typeof(TEvent).Name, _tracer))
                         {
-                            TSubscriber subscriber = container.Resolve<TSubscriber>();
+                            TSubscriber subscriber = serviceScope.ServiceProvider.GetService<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
@@ -490,7 +490,7 @@ namespace AgileSB.Drivers
 
         public void Startup()
         {
-            _container = Injection.Build();
+            _serviceProvider = Injection.BuildServiceProvider();
 
             _logger = (Logger)Activator.CreateInstance(_loggerType);
             _tracer = (Tracer)Activator.CreateInstance(_tracerType);
