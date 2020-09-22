@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Threading.Tasks;
 
-namespace AgileSB.Interfaces
+namespace AgileServiceBus.Interfaces
 {
     public interface ISchedulerBus : IDisposable
     {
-        void Schedule<TMessage>(string cron, Func<TMessage> createMessage, Func<Exception, Task> onError) where TMessage : class;
+        void Schedule<TEvent>(string cron, Func<TEvent> createMessage, Func<Exception, Task> error) where TEvent : class;
     }
 }
