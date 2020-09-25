@@ -2,6 +2,6 @@
 
 namespace AgileSB.Attributes
 {
-    [AttributeUsage(AttributeTargets.Method)]
+    [AttributeUsage(AttributeTargets.Method)]/*TO REFACT*/
     public class FakeResponse : Attribute { }
 }
