@@ -622,6 +622,8 @@ namespace AgileSB.Drivers
 
             if (_tracer != null)
                 _tracer.Dispose();
+
+            _cacheHandler.Dispose();
         }
     }
 }

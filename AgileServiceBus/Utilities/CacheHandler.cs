@@ -4,7 +4,7 @@ using System;
 
 namespace AgileServiceBus.Utilities
 {
-    public class CacheHandler
+    public class CacheHandler : IDisposable
     {
         private MemoryCache _memoryCache;
         private TimeSpan _duration;
@@ -36,6 +36,11 @@ namespace AgileServiceBus.Utilities
         private string CreateCacheKey(ICacheId cacheId)
         {
             return cacheId.GetType().FullName + "-" + cacheId.CreateCacheSuffix();
+        }
+
+        public void Dispose()
+        {
+            _memoryCache.Dispose();
         }
     }
 }
