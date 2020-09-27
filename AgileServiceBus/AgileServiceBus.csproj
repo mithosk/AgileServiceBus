@@ -18,7 +18,7 @@
     <None Remove="nuget.exe" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FluentValidation" Version="9.2.0" />
+    <PackageReference Include="FluentValidation" Version="9.2.2" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="3.1.8" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="3.1.8" />
     <PackageReference Include="ncrontab" Version="3.3.1" />
