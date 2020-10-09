@@ -1,9 +1,9 @@
 ﻿using System;
 
-namespace AgileSB.Attributes
+namespace AgileServiceBus.Attributes
 {
     [AttributeUsage(AttributeTargets.Class)]
-    public class QueueConfig : Attribute
+    public class BusNamespace : Attribute
     {
         public string Directory { get; set; }
         public string Subdirectory { get; set; }

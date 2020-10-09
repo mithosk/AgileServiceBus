@@ -1,5 +1,4 @@
-﻿using AgileSB.Attributes;
-using AgileSB.Exceptions;
+﻿using AgileSB.Exceptions;
 using AgileSB.Extensions;
 using AgileServiceBus.Attributes;
 using AgileServiceBus.Enums;
@@ -154,8 +153,8 @@ namespace AgileSB.Drivers
 
         public async Task<TResponse> RequestAsync<TResponse>(object message, ITraceScope traceScope)
         {
-            string directory = message.GetType().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = message.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = message.GetType().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = message.GetType().GetCustomAttribute<BusNamespace>().Subdirectory;
 
             using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + message.GetType().Name))
                 return await RequestAsync<TResponse>(message, traceSubScope.SpanId, traceSubScope.TraceId);
@@ -174,8 +173,8 @@ namespace AgileSB.Drivers
         public async Task NotifyAsync<TEvent>(TEvent message, string tag) where TEvent : class
         {
             //message direction
-            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<BusNamespace>().Subdirectory;
             string exchange = "event_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "");
 
@@ -206,8 +205,8 @@ namespace AgileSB.Drivers
             IRetry retryHandler = new RetryHandler(MIN_RETRY_DELAY, MAX_RETRY_DELAY, RETRY_LIMIT, true);
 
             //creates queue and exchange
-            string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<BusNamespace>().Subdirectory;
             string exchange = "request_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = typeof(TRequest).Name.ToLower();
             string queue = _appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower();
@@ -335,8 +334,8 @@ namespace AgileSB.Drivers
             IRetry retryHandler = new RetryHandler(0, 0, 0, false);
 
             //creates queue and exchanges
-            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<BusNamespace>().Subdirectory;
             string exchange = "event_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*");
             string restoreRoutingKey = _appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "");
@@ -511,8 +510,8 @@ namespace AgileSB.Drivers
             }
 
             //message direction
-            string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = request.GetType().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = request.GetType().GetCustomAttribute<BusNamespace>().Subdirectory;
             string exchange = "request_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = request.GetType().Name.ToLower();
 
