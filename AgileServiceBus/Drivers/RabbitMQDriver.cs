@@ -1,5 +1,4 @@
-﻿using AgileSB.Exceptions;
-using AgileSB.Extensions;
+﻿using AgileSB.Extensions;
 using AgileServiceBus.Attributes;
 using AgileServiceBus.Enums;
 using AgileServiceBus.Exceptions;
@@ -577,7 +576,7 @@ namespace AgileSB.Drivers
             //validation with regular expression
             Regex regex = new Regex("^[a-zA-Z0-9]+$");
             if (!regex.IsMatch(word ?? ""))
-                throw new QueueNamingException(exceptionMessage);
+                throw new NamingException(exceptionMessage);
 
             //forbidden words
             switch (word.ToLower())
@@ -586,7 +585,7 @@ namespace AgileSB.Drivers
                 case "response":
                 case "event":
                 case "dlq":
-                    throw new QueueNamingException(exceptionMessage);
+                    throw new NamingException(exceptionMessage);
             }
         }
 
