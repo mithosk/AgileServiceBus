@@ -8,7 +8,6 @@ using AgileServiceBus.Tracing;
 using AgileServiceBus.Utilities;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
-using NCrontab;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System;
@@ -435,7 +434,7 @@ namespace AgileSB.Drivers
             {
                 while (true)
                 {
-                    await CronDelay(retryCron);
+                    await retryCron.CronDelay();
 
                     List<BasicGetResult> bgrs = new List<BasicGetResult>();
                     for (int i = 0; i < DEAD_LETTER_QUEUE_RECOVERY_LIMIT; i++)
@@ -469,7 +468,7 @@ namespace AgileSB.Drivers
                 {
                     try
                     {
-                        await CronDelay(cron);
+                        await cron.CronDelay();
 
                         await NotifyAsync(createMessage());
                     }
@@ -567,15 +566,6 @@ namespace AgileSB.Drivers
 
             //response
             return responseWrapper.Response;
-        }
-
-        private async Task CronDelay(string cron)
-        {
-            CrontabSchedule schedule = CrontabSchedule.Parse(cron);
-            DateTime nextDate = schedule.GetNextOccurrence(DateTime.UtcNow);
-            TimeSpan delay = nextDate - DateTime.UtcNow;
-
-            await Task.Delay(delay);
         }
 
         public void Dispose()

@@ -1,6 +1,9 @@
 ﻿using AgileServiceBus.Exceptions;
+using NCrontab;
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace AgileServiceBus.Extensions
 {
@@ -37,6 +40,15 @@ namespace AgileServiceBus.Extensions
                 case "dlq":
                     throw new NamingException(exceptionMessage);
             }
+        }
+
+        public static async Task CronDelay(this string str)
+        {
+            CrontabSchedule crontabSchedule = CrontabSchedule.Parse(str);
+            DateTime nextDate = crontabSchedule.GetNextOccurrence(DateTime.UtcNow);
+            TimeSpan delay = nextDate - DateTime.UtcNow;
+
+            await Task.Delay(delay);
         }
     }
 }
