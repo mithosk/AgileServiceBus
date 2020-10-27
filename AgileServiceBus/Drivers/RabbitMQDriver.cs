@@ -1,5 +1,4 @@
-﻿using AgileSB.Extensions;
-using AgileServiceBus.Attributes;
+﻿using AgileServiceBus.Attributes;
 using AgileServiceBus.Enums;
 using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
@@ -16,7 +15,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -64,7 +62,7 @@ namespace AgileSB.Drivers
 
         public RabbitMQDriver(string connectionString)
         {
-            Dictionary<string, string> settings = connectionString.ParseAsConnectionString();
+            Dictionary<string, string> settings = connectionString.ParseConnStr();
 
             //creates the connection
             ConnectionFactory connectionFactory = new ConnectionFactory();
@@ -324,7 +322,7 @@ namespace AgileSB.Drivers
         {
             //naming validation
             if (tag != null)
-                CheckQueueNaming(tag, "Invalid tag");
+                tag.CheckNaming();
 
             //subscriber registration in a container
             Injection.AddTransient(typeof(TSubscriber));
@@ -569,24 +567,6 @@ namespace AgileSB.Drivers
 
             //response
             return responseWrapper.Response;
-        }
-
-        private void CheckQueueNaming(string word, string exceptionMessage)
-        {
-            //validation with regular expression
-            Regex regex = new Regex("^[a-zA-Z0-9]+$");
-            if (!regex.IsMatch(word ?? ""))
-                throw new NamingException(exceptionMessage);
-
-            //forbidden words
-            switch (word.ToLower())
-            {
-                case "request":
-                case "response":
-                case "event":
-                case "dlq":
-                    throw new NamingException(exceptionMessage);
-            }
         }
 
         private async Task CronDelay(string cron)
