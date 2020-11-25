@@ -1,7 +1,7 @@
 ### ... how to create a MICROSERVICE message listener ...
 
 ```csharp
-[QueueConfig(Directory = "John", Subdirectory = "Doe")]
+[BusNamespace(Directory = "John", Subdirectory = "Doe")]
 public class MyEvent
 {
     public string Cat { get; set; }
@@ -22,7 +22,7 @@ public class MyEventHandler : IEventHandler<MyEvent>
 }
 ```
 ```csharp
-IMicroserviceLifetime ml = new RabbitMQDriver("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=mmm");
+IMicroserviceLifetime ml = new RabbitMQDriver("Host=x;VHost=y;Port=z;User=k;Password=w;AppId=m");
 ml.Subscribe<MyEventHandler, MyEvent>(null, null, null, null);
 ```
 
@@ -31,7 +31,7 @@ ml.Subscribe<MyEventHandler, MyEvent>(null, null, null, null);
 ### ... how to create a MICROSERVICE rpc responder ...
 
 ```csharp
-[QueueConfig(Directory = "John", Subdirectory = "Doe")]
+[BusNamespace(Directory = "John", Subdirectory = "Doe")]
 public class MyRequest
 {
     public int Lion { get; set; }
@@ -61,10 +61,10 @@ ml.Startup();
 ### ... how to make a GATEWAY rpc request ...
 
 ```csharp
-IGatewayBus gbus = new RabbitMQDriver("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=ggg");
+IGatewayBus gbus = new RabbitMQDriver("Host=x;VHost=y;Port=z;User=k;Password=w;AppId=g");
 ```
 ```csharp
-MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest()
+MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest
 { 
     Lion = 5, 
     Crocodile = DateTime.UtcNow,
@@ -77,7 +77,7 @@ MyResponse response = await gbus.RequestAsync<MyResponse>(new MyRequest()
 ### ... how to create a message SCHEDULER ...
 
 ```csharp
-ISchedulerBus sbus = new RabbitMQDriver("Host=xxx;VHost=yyy;Port=zzz;User=kkk;Password=www;AppId=sss");
+ISchedulerBus sbus = new RabbitMQDriver("Host=x;VHost=y;Port=z;User=k;Password=w;AppId=s");
 ```
 ```csharp
 sbus.Schedule("* * * * *", () =>
