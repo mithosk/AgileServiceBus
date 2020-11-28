@@ -1,7 +1,4 @@
-﻿using AgileSB.Attributes;
-using AgileSB.Exceptions;
-using AgileSB.Extensions;
-using AgileSB.Interfaces;
+﻿using AgileServiceBus.Attributes;
 using AgileServiceBus.Enums;
 using AgileServiceBus.Exceptions;
 using AgileServiceBus.Extensions;
@@ -9,16 +6,14 @@ using AgileServiceBus.Interfaces;
 using AgileServiceBus.Logging;
 using AgileServiceBus.Tracing;
 using AgileServiceBus.Utilities;
-using Autofac;
 using FluentValidation;
-using NCrontab;
+using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -38,6 +33,8 @@ namespace AgileSB.Drivers
         private const byte SEND_NUMBER_OF_THREADS = 4;
         private const byte RECEIVE_NUMBER_OF_THREADS = 16;
         private const byte DEAD_LETTER_QUEUE_NUMBER_OF_THREADS = 1;
+        private const ushort CACHE_LIMIT = 5000;
+        private readonly TimeSpan CACHE_DURATION = new TimeSpan(2, 30, 0);
 
         private IConnection _connection;
         private IModel _requestChannel;
@@ -47,7 +44,7 @@ namespace AgileSB.Drivers
         private IModel _deadLetterQueueChannel;
         private string _appId;
         private MessageGroupQueue _responseQueue;
-        private IContainer _container;
+        private IServiceProvider _serviceProvider;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
         private MultiThreadTaskScheduler _sendTaskScheduler;
         private MultiThreadTaskScheduler _receiveTaskScheduler;
@@ -58,12 +55,13 @@ namespace AgileSB.Drivers
         private Type _tracerType;
         private Tracer _tracer;
         private JsonConverter _jsonConverter;
+        private CacheHandler _cacheHandler;
 
-        public ContainerBuilder Injection { get; }
+        public IServiceCollection Injection { get; }
 
         public RabbitMQDriver(string connectionString)
         {
-            Dictionary<string, string> settings = connectionString.ParseAsConnectionString();
+            Dictionary<string, string> settings = connectionString.ParseConnStr();
 
             //creates the connection
             ConnectionFactory connectionFactory = new ConnectionFactory();
@@ -88,7 +86,7 @@ namespace AgileSB.Drivers
             _appId = settings["AppId"];
 
             //builder for container
-            Injection = new ContainerBuilder();
+            Injection = new ServiceCollection();
 
             //response queue
             _responseQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
@@ -97,13 +95,13 @@ namespace AgileSB.Drivers
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestChannel);
             consumer.Received += (obj, args) =>
             {
-                _responseQueue.AddMessage(Encoding.UTF8.GetString(args.Body), args.BasicProperties.CorrelationId);
+                _responseQueue.AddMessage(Encoding.UTF8.GetString(args.Body.ToArray()), args.BasicProperties.CorrelationId);
             };
 
             _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
 
-            //builded container
-            _container = null;
+            //dependency injection container
+            _serviceProvider = null;
 
             //list of to activate consumers
             _toActivateConsumers = new List<Tuple<IModel, string, EventingBasicConsumer>>();
@@ -124,6 +122,9 @@ namespace AgileSB.Drivers
 
             //json converter
             _jsonConverter = new JsonConverter();
+
+            //cache handler
+            _cacheHandler = new CacheHandler(CACHE_LIMIT, CACHE_DURATION);
         }
 
         public void RegisterLogger<TLogger>() where TLogger : Logger
@@ -148,8 +149,8 @@ namespace AgileSB.Drivers
 
         public async Task<TResponse> RequestAsync<TResponse>(object message, ITraceScope traceScope)
         {
-            string directory = message.GetType().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = message.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = message.GetType().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = message.GetType().GetCustomAttribute<BusNamespace>().Subdirectory;
 
             using (ITraceScope traceSubScope = traceScope.CreateSubScope("Request-" + directory + "." + subdirectory + "." + message.GetType().Name))
                 return await RequestAsync<TResponse>(message, traceSubScope.SpanId, traceSubScope.TraceId);
@@ -168,8 +169,8 @@ namespace AgileSB.Drivers
         public async Task NotifyAsync<TEvent>(TEvent message, string tag) where TEvent : class
         {
             //message direction
-            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<BusNamespace>().Subdirectory;
             string exchange = "event_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "");
 
@@ -194,14 +195,14 @@ namespace AgileSB.Drivers
         public IIncludeForRetry Subscribe<TSubscriber, TRequest>(AbstractValidator<TRequest> validator) where TSubscriber : IResponder<TRequest> where TRequest : class
         {
             //subscriber registration in a container
-            Injection.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+            Injection.AddTransient(typeof(TSubscriber));
 
             //retry handler
             IRetry retryHandler = new RetryHandler(MIN_RETRY_DELAY, MAX_RETRY_DELAY, RETRY_LIMIT, true);
 
             //creates queue and exchange
-            string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = typeof(TRequest).GetTypeInfo().GetCustomAttribute<BusNamespace>().Subdirectory;
             string exchange = "request_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = typeof(TRequest).Name.ToLower();
             string queue = _appId.ToLower() + "-request-" + directory.ToLower() + "-" + subdirectory.ToLower() + "-" + typeof(TRequest).Name.ToLower();
@@ -216,7 +217,7 @@ namespace AgileSB.Drivers
                 Task.Factory.StartNew(async () =>
                 {
                     //request message
-                    string messageBody = Encoding.UTF8.GetString(args.Body);
+                    string messageBody = Encoding.UTF8.GetString(args.Body.ToArray());
 
                     //tracing data
                     string traceSpanId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"]);
@@ -232,10 +233,10 @@ namespace AgileSB.Drivers
                         if (validator != null)
                             await validator.ValidateAndThrowAsync(messageRequest, (directory + "." + subdirectory + "." + messageRequest.GetType().Name + " is not valid"));
 
-                        using (ILifetimeScope container = _container.BeginLifetimeScope())
+                        using (IServiceScope serviceScope = _serviceProvider.CreateScope())
                         using (ITraceScope traceScope = (traceSpanId != "" && traceId != "") ? new TraceScope(traceSpanId, traceId, traceDisplayName, _tracer) : new TraceScope(traceDisplayName, _tracer))
                         {
-                            TSubscriber subscriber = container.Resolve<TSubscriber>();
+                            TSubscriber subscriber = serviceScope.ServiceProvider.GetService<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
@@ -320,17 +321,17 @@ namespace AgileSB.Drivers
         {
             //naming validation
             if (tag != null)
-                CheckQueueNaming(tag, "Invalid tag");
+                tag.CheckNaming();
 
             //subscriber registration in a container
-            Injection.RegisterType<TSubscriber>().InstancePerLifetimeScope();
+            Injection.AddTransient(typeof(TSubscriber));
 
             //retry handler
             IRetry retryHandler = new RetryHandler(0, 0, 0, false);
 
             //creates queue and exchanges
-            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = typeof(TEvent).GetTypeInfo().GetCustomAttribute<BusNamespace>().Subdirectory;
             string exchange = "event_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "*");
             string restoreRoutingKey = _appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "");
@@ -342,8 +343,8 @@ namespace AgileSB.Drivers
             _eventHandlerChannel.QueueBind(queue, DEAD_LETTER_QUEUE_EXCHANGE, restoreRoutingKey);
 
             //creates dead letter queue
-            string deadLetterQueue = (queue + "-dlq");
-            string dlqRoutingKey = (_appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq");
+            string deadLetterQueue = queue + "-dlq";
+            string dlqRoutingKey = _appId.ToLower() + "." + directory.ToLower() + "." + subdirectory.ToLower() + "." + typeof(TEvent).Name.ToLower() + (tag != null ? ("." + tag.ToLower()) : "") + ".dlq";
             _deadLetterQueueChannel.QueueDeclare(deadLetterQueue, true, false, false, new Dictionary<string, object> { { "x-queue-mode", "lazy" } });
             _deadLetterQueueChannel.QueueBind(deadLetterQueue, DEAD_LETTER_QUEUE_EXCHANGE, dlqRoutingKey);
 
@@ -353,7 +354,7 @@ namespace AgileSB.Drivers
             {
                 Task.Factory.StartNew(async () =>
                 {
-                    string messageBody = Encoding.UTF8.GetString(args.Body);
+                    string messageBody = Encoding.UTF8.GetString(args.Body.ToArray());
 
                     try
                     {
@@ -361,10 +362,10 @@ namespace AgileSB.Drivers
                         if (validator != null)
                             await validator.ValidateAndThrowAsync(messageEvent, (directory + "." + subdirectory + "." + typeof(TEvent).Name + " is not valid"));
 
-                        using (ILifetimeScope container = _container.BeginLifetimeScope())
+                        using (IServiceScope serviceScope = _serviceProvider.CreateScope())
                         using (ITraceScope traceScope = new TraceScope("Handle-" + directory + "." + subdirectory + "." + typeof(TEvent).Name, _tracer))
                         {
-                            TSubscriber subscriber = container.Resolve<TSubscriber>();
+                            TSubscriber subscriber = serviceScope.ServiceProvider.GetService<TSubscriber>();
                             subscriber.Bus = this;
                             subscriber.TraceScope = traceScope;
                             traceScope.Attributes.Add("AppId", _appId);
@@ -433,7 +434,7 @@ namespace AgileSB.Drivers
             {
                 while (true)
                 {
-                    await CronDelay(retryCron);
+                    await retryCron.CronDelay();
 
                     List<BasicGetResult> bgrs = new List<BasicGetResult>();
                     for (int i = 0; i < DEAD_LETTER_QUEUE_RECOVERY_LIMIT; i++)
@@ -467,7 +468,7 @@ namespace AgileSB.Drivers
                 {
                     try
                     {
-                        await CronDelay(cron);
+                        await cron.CronDelay();
 
                         await NotifyAsync(createMessage());
                     }
@@ -484,7 +485,7 @@ namespace AgileSB.Drivers
 
         public void Startup()
         {
-            _container = Injection.Build();
+            _serviceProvider = Injection.BuildServiceProvider();
 
             _logger = (Logger)Activator.CreateInstance(_loggerType);
             _tracer = (Tracer)Activator.CreateInstance(_tracerType);
@@ -495,9 +496,18 @@ namespace AgileSB.Drivers
 
         private async Task<TResponse> RequestAsync<TResponse>(object request, string traceSpanId, string traceId)
         {
+            //get from cache
+            ICacheId cacheId = request as ICacheId;
+            if (cacheId != null)
+            {
+                TResponse cached = _cacheHandler.Get<TResponse>(cacheId);
+                if (cached != null && !cached.Equals(default(TResponse)))
+                    return cached;
+            }
+
             //message direction
-            string directory = request.GetType().GetCustomAttribute<QueueConfig>().Directory;
-            string subdirectory = request.GetType().GetCustomAttribute<QueueConfig>().Subdirectory;
+            string directory = request.GetType().GetCustomAttribute<BusNamespace>().Directory;
+            string subdirectory = request.GetType().GetCustomAttribute<BusNamespace>().Subdirectory;
             string exchange = "request_" + directory.ToLower() + "_" + subdirectory.ToLower();
             string routingKey = request.GetType().Name.ToLower();
 
@@ -544,41 +554,18 @@ namespace AgileSB.Drivers
 
             //timeout
             if (responseWrapper == null)
-                throw (new TimeoutException(request.GetType().Name + " did Not Respond"));
+                throw new TimeoutException(request.GetType().Name + " did not respond");
 
             //remote error
             if (responseWrapper.ExceptionCode != null)
                 throw new RemoteException(responseWrapper.ExceptionCode, responseWrapper.ExceptionMessage);
 
+            //add to cache
+            if (cacheId != null)
+                _cacheHandler.Set(cacheId, responseWrapper.Response);
+
             //response
             return responseWrapper.Response;
-        }
-
-        private void CheckQueueNaming(string word, string exceptionMessage)
-        {
-            //validation with regular expression
-            Regex regex = new Regex("^[a-zA-Z0-9]+$");
-            if (!regex.IsMatch(word ?? ""))
-                throw new QueueNamingException(exceptionMessage);
-
-            //forbidden words
-            switch (word.ToLower())
-            {
-                case "request":
-                case "response":
-                case "event":
-                case "dlq":
-                    throw new QueueNamingException(exceptionMessage);
-            }
-        }
-
-        private async Task CronDelay(string cron)
-        {
-            CrontabSchedule schedule = CrontabSchedule.Parse(cron);
-            DateTime nextDate = schedule.GetNextOccurrence(DateTime.UtcNow);
-            TimeSpan delay = (nextDate - DateTime.UtcNow);
-
-            await Task.Delay(delay);
         }
 
         public void Dispose()
@@ -604,6 +591,8 @@ namespace AgileSB.Drivers
 
             if (_tracer != null)
                 _tracer.Dispose();
+
+            _cacheHandler.Dispose();
         }
     }
 }

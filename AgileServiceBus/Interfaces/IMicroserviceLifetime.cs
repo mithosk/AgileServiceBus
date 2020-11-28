@@ -1,14 +1,14 @@
 ﻿using AgileServiceBus.Logging;
 using AgileServiceBus.Tracing;
-using Autofac;
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 
 namespace AgileServiceBus.Interfaces
 {
     public interface IMicroserviceLifetime : IDisposable
     {
-        ContainerBuilder Injection { get; }
+        IServiceCollection Injection { get; }
 
         IIncludeForRetry Subscribe<TResponder, TRequest>(AbstractValidator<TRequest> validator) where TResponder : IResponder<TRequest> where TRequest : class;
         IExcludeForRetry Subscribe<TEventHandler, TEvent>(string tag, AbstractValidator<TEvent> validator, string retryCron, ushort? retryLimit) where TEventHandler : IEventHandler<TEvent> where TEvent : class;

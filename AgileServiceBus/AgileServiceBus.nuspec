@@ -2,8 +2,8 @@
 <package>
   <metadata>
     <id>AgileServiceBus</id>
-    <version>1.11.24</version>
-    <releaseNotes>Advanced Logging System</releaseNotes>
+    <version>2.11.28</version>
+    <releaseNotes>RPC Cache for very high performance</releaseNotes>
     <title>AgileServiceBus</title>
     <description>.NET Microservices Framework</description>
     <tags>Microservices Messaging RabbitMQ</tags>
@@ -15,11 +15,12 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <dependencies>
       <group targetFramework=".NETStandard2.0">
-        <dependency id="Autofac" version="4.9.4" />
-        <dependency id="FluentValidation" version="8.5.1" />
+        <dependency id="FluentValidation" version="9.3.0" />
+        <dependency id="Microsoft.Extensions.Caching.Memory" version="5.0.0" />
+        <dependency id="Microsoft.Extensions.DependencyInjection" version="5.0.0" />
         <dependency id="ncrontab" version="3.3.1" />
         <dependency id="Newtonsoft.Json" version="12.0.3" />
-        <dependency id="RabbitMQ.Client" version="5.1.2" />
+        <dependency id="RabbitMQ.Client" version="[6.2.1]" />
       </group>
     </dependencies>
   </metadata>

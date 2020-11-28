@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace AgileSB.Attributes
+namespace AgileServiceBus.Attributes
 {
     [AttributeUsage(AttributeTargets.Method)]
     public class FakeResponse : Attribute { }
