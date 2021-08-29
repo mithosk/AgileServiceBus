@@ -13,9 +13,9 @@ namespace AgileServiceBus.Utilities
 
             using (MemoryStream zippedStream = new MemoryStream())
             using (MemoryStream textStream = new MemoryStream(textBytes))
-            using (GZipStream zipperStream = new GZipStream(zippedStream, CompressionMode.Compress))
             {
-                await textStream.CopyToAsync(zipperStream);
+                using (GZipStream zipperStream = new GZipStream(zippedStream, CompressionMode.Compress))
+                    await textStream.CopyToAsync(zipperStream);
 
                 return zippedStream.ToArray();
             }
@@ -25,9 +25,9 @@ namespace AgileServiceBus.Utilities
         {
             using (MemoryStream textStream = new MemoryStream())
             using (MemoryStream zippedStream = new MemoryStream(zipped))
-            using (GZipStream zipperStream = new GZipStream(zippedStream, CompressionMode.Decompress))
             {
-                await zipperStream.CopyToAsync(textStream);
+                using (GZipStream zipperStream = new GZipStream(zippedStream, CompressionMode.Decompress))
+                    await zipperStream.CopyToAsync(textStream);
 
                 return Encoding.UTF8.GetString(textStream.ToArray());
             }
