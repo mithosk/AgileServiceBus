@@ -10,7 +10,7 @@ namespace AgileServiceBus.Test.Unit
         [Fact]
         public async Task TransformationCoherence()
         {
-            string text = "This is my text";
+            string text = "ABCDEFGHILMNOPQRSTUVZ0123456789-ABCDEFGHILMNOPQRSTUVZ0123456789-ABCDEFGHILMNOPQRSTUVZ0123456789";
 
             TextZipper textZipper = new TextZipper();
             byte[] compressed = await textZipper.CompressAsync(text);
@@ -22,7 +22,7 @@ namespace AgileServiceBus.Test.Unit
         [Fact]
         public async Task DataReduction()
         {
-            string text = "This is my text";
+            string text = "ABCDEFGHILMNOPQRSTUVZ0123456789-ABCDEFGHILMNOPQRSTUVZ0123456789-ABCDEFGHILMNOPQRSTUVZ0123456789";
 
             TextZipper textZipper = new TextZipper();
             byte[] compressed = await textZipper.CompressAsync(text);
