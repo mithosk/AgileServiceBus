@@ -23,7 +23,7 @@ namespace AgileServiceBus.Utilities
             settings.DateFormatHandling = DateFormatHandling.IsoDateFormat;
             settings.NullValueHandling = NullValueHandling.Ignore;
 
-            settings.Converters.Add(new StringEnumConverter()
+            settings.Converters.Add(new StringEnumConverter
             {
                 AllowIntegerValues = false,
                 NamingStrategy = new CamelCaseNamingStrategy()
