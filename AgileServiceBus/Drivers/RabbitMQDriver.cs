@@ -43,6 +43,7 @@ namespace AgileSB.Drivers
         private IModel _eventHandlerChannel;
         private IModel _deadLetterQueueChannel;
         private string _appId;
+        private TextZipper _textZipper;
         private MessageGroupQueue _responseQueue;
         private IServiceProvider _serviceProvider;
         private List<Tuple<IModel, string, EventingBasicConsumer>> _toActivateConsumers;
@@ -88,14 +89,17 @@ namespace AgileSB.Drivers
             //builder for container
             Injection = new ServiceCollection();
 
+            //text zipper
+            _textZipper = new TextZipper();
+
             //response queue
             _responseQueue = new MessageGroupQueue(REQUEST_TIMEOUT);
 
             //response listener         
             EventingBasicConsumer consumer = new EventingBasicConsumer(_requestChannel);
-            consumer.Received += (obj, args) =>
+            consumer.Received += async (obj, args) =>
             {
-                _responseQueue.AddMessage(Encoding.UTF8.GetString(args.Body.ToArray()), args.BasicProperties.CorrelationId);
+                _responseQueue.AddMessage(await _textZipper.DecompressAsync(args.Body.ToArray()), args.BasicProperties.CorrelationId);
             };
 
             _requestChannel.BasicConsume(DIRECT_REPLY_QUEUE, true, consumer);
@@ -175,7 +179,7 @@ namespace AgileSB.Drivers
             string routingKey = typeof(TEvent).Name.ToLower() + "." + (tag != null ? tag.ToLower() : "");
 
             //message publishing
-            await Task.Factory.StartNew(() =>
+            await Task.Factory.StartNew(async () =>
             {
                 _notifyChannel.ExchangeDeclare(exchange, ExchangeType.Topic, true, false);
 
@@ -185,7 +189,7 @@ namespace AgileSB.Drivers
                 properties.Headers = new Dictionary<string, object>();
                 properties.Headers.Add("RetryIndex", "0");
                 properties.Persistent = true;
-                _notifyChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(_jsonConverter.Serialize(message)));
+                _notifyChannel.BasicPublish(exchange, routingKey, properties, await _textZipper.CompressAsync(_jsonConverter.Serialize(message)));
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
@@ -217,7 +221,7 @@ namespace AgileSB.Drivers
                 Task.Factory.StartNew(async () =>
                 {
                     //request message
-                    string messageBody = Encoding.UTF8.GetString(args.Body.ToArray());
+                    string messageBody = await _textZipper.DecompressAsync(args.Body.ToArray());
 
                     //tracing data
                     string traceSpanId = Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["TraceSpanId"]);
@@ -287,7 +291,7 @@ namespace AgileSB.Drivers
                         properties.MessageId = Guid.NewGuid().ToString();
                         properties.Persistent = false;
                         properties.CorrelationId = args.BasicProperties.CorrelationId;
-                        _responderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, Encoding.UTF8.GetBytes(messageBody));
+                        _responderChannel.BasicPublish("", args.BasicProperties.ReplyTo, properties, await _textZipper.CompressAsync(messageBody));
 
                         _logger.Send(new MessageDetail
                         {
@@ -354,7 +358,7 @@ namespace AgileSB.Drivers
             {
                 Task.Factory.StartNew(async () =>
                 {
-                    string messageBody = Encoding.UTF8.GetString(args.Body.ToArray());
+                    string messageBody = await _textZipper.DecompressAsync(args.Body.ToArray());
 
                     try
                     {
@@ -515,7 +519,7 @@ namespace AgileSB.Drivers
             string correlationId = Guid.NewGuid().ToString();
 
             //sending request
-            await Task.Factory.StartNew(() =>
+            await Task.Factory.StartNew(async () =>
             {
                 _requestChannel.ExchangeDeclare(exchange, ExchangeType.Direct, true, false);
 
@@ -530,7 +534,7 @@ namespace AgileSB.Drivers
                 properties.Headers.Add("TraceSpanId", traceSpanId);
                 properties.Headers.Add("TraceId", traceId);
                 properties.Persistent = false;
-                _requestChannel.BasicPublish(exchange, routingKey, properties, Encoding.UTF8.GetBytes(_jsonConverter.Serialize(request)));
+                _requestChannel.BasicPublish(exchange, routingKey, properties, await _textZipper.CompressAsync(_jsonConverter.Serialize(request)));
             },
             _cancellationTokenSource.Token,
             TaskCreationOptions.DenyChildAttach,
