@@ -2,8 +2,8 @@
 <package>
 	<metadata>
 		<id>AgileServiceBus</id>
-		<version>3.8.31</version>
-		<releaseNotes>Message Compression</releaseNotes>
+		<version>3.9.1</version>
+		<releaseNotes>GZip compression Fix</releaseNotes>
 		<title>AgileServiceBus</title>
 		<description>.NET Microservices Framework</description>
 		<tags>Microservices Messaging RabbitMQ</tags>
