@@ -17,7 +17,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AgileSB.Drivers
+namespace AgileServiceBus.Drivers
 {
     public class RabbitMQDriver : IDriver
     {
