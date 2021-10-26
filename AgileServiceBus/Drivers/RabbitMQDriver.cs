@@ -72,6 +72,7 @@ namespace AgileServiceBus.Drivers
             connectionFactory.UserName = settings["User"];
             connectionFactory.Password = settings["Password"];
             connectionFactory.AutomaticRecoveryEnabled = true;
+            connectionFactory.ClientProvidedName = settings["AppId"];
             _connection = connectionFactory.CreateConnection();
 
             //creates channels
