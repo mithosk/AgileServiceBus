@@ -33,6 +33,10 @@ namespace AgileServiceBus.Additionals
             public void Start(Func<IMicroserviceLifetime> configurator)
             {
                 _ml = configurator();
+
+                GC.Collect();
+
+                _ml.Startup();
             }
 
             public void Stop()
