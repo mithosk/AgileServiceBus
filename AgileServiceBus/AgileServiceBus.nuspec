@@ -21,6 +21,7 @@
 				<dependency id="ncrontab" version="3.3.1" />
 				<dependency id="Newtonsoft.Json" version="13.0.1" />
 				<dependency id="RabbitMQ.Client" version="[6.2.2]" />
+				<dependency id="Topshelf" version="4.3.0" />
 			</group>
 		</dependencies>
 	</metadata>
