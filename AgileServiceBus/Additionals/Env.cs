@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.IO;
 
 namespace AgileServiceBus.Additionals
@@ -12,7 +11,7 @@ namespace AgileServiceBus.Additionals
         {
             _couples = new Hashtable();
 
-            string[] lines = File.ReadAllLines(AppDomain.CurrentDomain.BaseDirectory + "\\env");
+            string[] lines = File.ReadAllLines("env");
 
             foreach (string line in lines)
                 if (!line.Trim().StartsWith("#") && line.Contains(">") && line.Replace(" ", "").Length >= 3)
