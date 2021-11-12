@@ -2,8 +2,8 @@
 <package>
 	<metadata>
 		<id>AgileServiceBus</id>
-		<version>3.9.1</version>
-		<releaseNotes>Topshelf service Launcher</releaseNotes>
+		<version>4.1.XXXXXXXXXX</version>
+		<releaseNotes>YYYYYYYYYY</releaseNotes>
 		<title>AgileServiceBus</title>
 		<description>.NET Microservices Framework</description>
 		<tags>Microservices Messaging RabbitMQ</tags>
@@ -15,13 +15,13 @@
 		<requireLicenseAcceptance>false</requireLicenseAcceptance>
 		<dependencies>
 			<group targetFramework=".NETStandard2.0">
-				<dependency id="FluentValidation" version="10.3.3" />
+				<dependency id="FluentValidation" version="10.3.4" />
 				<dependency id="Microsoft.Extensions.Caching.Memory" version="5.0.0" />
 				<dependency id="Microsoft.Extensions.DependencyInjection" version="5.0.2" />
+				<dependency id="Microsoft.Extensions.Hosting" version="5.0.0" />
 				<dependency id="ncrontab" version="3.3.1" />
 				<dependency id="Newtonsoft.Json" version="13.0.1" />
 				<dependency id="RabbitMQ.Client" version="[6.2.2]" />
-				<dependency id="Topshelf" version="4.3.0" />
 			</group>
 		</dependencies>
 	</metadata>
