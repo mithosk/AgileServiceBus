@@ -24,10 +24,12 @@ namespace AgileServiceBus.Utilities
             _threads = new Thread[numberOfThreads];
             for (byte i = 0; i < numberOfThreads; i++)
             {
-                _threads[i] = new Thread(ExecuteTasks);
-                _threads[i].IsBackground = true;
-                _threads[i].SetApartmentState(ApartmentState.MTA);
-                _threads[i].Priority = ThreadPriority.Normal;
+                _threads[i] = new Thread(ExecuteTasks)
+                {
+                    IsBackground = true,
+                    Priority = ThreadPriority.Normal
+                };
+
                 _threads[i].Start();
             }
         }
