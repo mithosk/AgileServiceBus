@@ -2,7 +2,7 @@
 <package>
 	<metadata>
 		<id>AgileServiceBus</id>
-		<version>4.1.X</version>
+		<version>4.1.2</version>
 		<releaseNotes>Compatibility with Docker containers</releaseNotes>
 		<title>AgileServiceBus</title>
 		<description>.NET Microservices Framework</description>
@@ -15,7 +15,7 @@
 		<requireLicenseAcceptance>false</requireLicenseAcceptance>
 		<dependencies>
 			<group targetFramework=".NETStandard2.0">
-				<dependency id="FluentValidation" version="10.3.4" />
+				<dependency id="FluentValidation" version="10.3.6" />
 				<dependency id="Microsoft.Extensions.Caching.Memory" version="5.0.0" />
 				<dependency id="Microsoft.Extensions.DependencyInjection" version="5.0.2" />
 				<dependency id="Microsoft.Extensions.Hosting" version="5.0.0" />
